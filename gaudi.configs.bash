@@ -30,6 +30,7 @@ GAUDI_PROMPT_ASYNC=(
 
 GAUDI_PROMPT_LEFT=(
   multiplexer   # tmux segment
+  duration      # Last command duration
   cwd           # Current working directory
 )
 
