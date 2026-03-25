@@ -12,15 +12,9 @@ source "$GAUDI_ROOT/lib/scm.bash"
 # Reference: https://github.com/nojhan/liquidprompt/issues/161
 test -z "$TERM" -o "x$TERM" = xdumb && return
 
-# # Check for recent enough version of bash.
-# if test -n "${BASH_VERSION-}" -a -n "$PS1" ; then
-#   bash=${BASH_VERSION%.*}; bmajor=${bash%.*}; bminor=${bash#*.}
-#   if (( bmajor < 4 || ( bmajor == 4 && bminor < 0 ) )); then
-#     echo "The current bash version ${bash} is not supported by Gaudi Theme [[ 4.0+ ]]"
-#     unset bash bmajor bminor
-#     return
-#   fi
-# fi
+# Cache for async prompt content — persists between prompt renders so the
+# prompt always shows the last known async result instead of going blank.
+_GAUDI_ASYNC_CACHE=""
 
 gaudi::prompt () {
 
@@ -38,10 +32,11 @@ gaudi::prompt () {
 
   LEFT_PROMPT="$(gaudi::render_prompt GAUDI_PROMPT_LEFT[@])"
   RIGHT_PROMPT="$(gaudi::render_prompt GAUDI_PROMPT_RIGHT[@])"
-  ASYNC_PROMPT="$(gaudi::render_prompt GAUDI_PROMPT_ASYNC[@])"
 
-  # Check if we need to activate the two side theme split (LEFT_PROMPT ------ RIGHT RIGHT)
-  # Or we need to have the whole prompt in one line where (RIGHT_PROMPT LEFT_PROMPT)
+  # Use cached async content for the initial PS1 draw — the background
+  # job will overwrite this with fresh content once it finishes.
+  local ASYNC_PROMPT="${_GAUDI_ASYNC_CACHE}"
+
   if [[ $GAUDI_SPLIT_PROMPT == false ]]; then
     PS1=$(printf "\n%b%b%b\n\n%b" "$RIGHT_PROMPT" "$LEFT_PROMPT" "$ASYNC_PROMPT" "$PROMPT_CHAR")
   else
@@ -53,18 +48,34 @@ gaudi::prompt () {
     PS1=$(printf "\n%*b%s%b%b\n\n%b" "$(($(tput cols) + "$COMPENSATE"))" "$RIGHT_PROMPT" "$line_separator" "$LEFT_PROMPT" "$ASYNC_PROMPT" "$PROMPT_CHAR")
   fi;
 
+  # Render async segments in background and overwrite the prompt
+  gaudi::render_async () {
+    local FRESH_ASYNC
+    FRESH_ASYNC="$(gaudi::render_prompt GAUDI_PROMPT_ASYNC[@])"
+
+    # Update the cache for next prompt render
+    _GAUDI_ASYNC_CACHE="$FRESH_ASYNC"
+
+    tput sc && tput cuu1 && tput cuu1
+    if [[ $GAUDI_SPLIT_PROMPT == false ]]; then
+      printf "\r%b%b%b" "$RIGHT_PROMPT" "$LEFT_PROMPT" "$FRESH_ASYNC"
+    else
+      printf "\r%b%b" "$LEFT_PROMPT" "$FRESH_ASYNC"
+    fi;
+    tput rc
+  }
+
   # Load the PS2 continuation bash configuration
   source "$GAUDI_ROOT/segments/continuation.bash"
-  # PS2 – Continuation interactive prompt
   PS2=$(gaudi_continuation)
 
-  # The PS4 defined below in the ps4.sh has the following two codes:
-  #   $0 – indicates the name of script
-  #   $LINENO – displays the current line number within the script
   PS4='$0.$LINENO+ '
 
+  set +m
+  gaudi::render_async &
+
   ## cleanup
-  unset LEFT_PROMPT RIGHT_PROMPT ASYNC_PROMPT
+  unset LEFT_PROMPT RIGHT_PROMPT
 }
 
 PROMPT_COMMAND=gaudi::prompt
