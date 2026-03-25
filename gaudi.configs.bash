@@ -10,7 +10,7 @@ GAUDI_PROMPT_DEFAULT_SUFFIX=" "
 
 GAUDI_PROMPT_ASYNC=(
   scm           # code management segment (git, mercurial, perforce, etc.)
-  kubecontext   # Kubectl context segment
+  aws           # Amazon WebServices (AWS) segment
   docker        # Docker segment
   node          # Node.js segment
   ruby          # Ruby segment

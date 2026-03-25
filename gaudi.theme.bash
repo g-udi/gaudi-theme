@@ -13,15 +13,15 @@ source "$GAUDI_ROOT/lib/scm.bash"
 # Reference: https://github.com/nojhan/liquidprompt/issues/161
 test -z "$TERM" -o "x$TERM" = xdumb && return
 
-# Check for recent enough version of bash.
-if test -n "${BASH_VERSION-}" -a -n "$PS1" ; then
-  bash=${BASH_VERSION%.*}; bmajor=${bash%.*}; bminor=${bash#*.}
-  if (( bmajor < 4 || ( bmajor == 4 && bminor < 0 ) )); then
-    echo "The current bash version ${bash} is not supported by Gaudi [[ 4.0+ ]]"
-    unset bash bmajor bminor
-    return
-  fi
-fi
+# # Check for recent enough version of bash.
+# if test -n "${BASH_VERSION-}" -a -n "$PS1" ; then
+#   bash=${BASH_VERSION%.*}; bmajor=${bash%.*}; bminor=${bash#*.}
+#   if (( bmajor < 4 || ( bmajor == 4 && bminor < 0 ) )); then
+#     echo "The current bash version ${bash} is not supported by Gaudi Theme [[ 4.0+ ]]"
+#     unset bash bmajor bminor
+#     return
+#   fi
+# fi
 
 gaudi::prompt () {
 
