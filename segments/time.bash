@@ -9,7 +9,7 @@
 # ------------------------------------------------------------------------------
 
 GAUDI_TIME_SHOW="${GAUDI_TIME_SHOW=true}"
-GAUDI_TIME_PREFIX="${GAUDI_TIME_PREFIX=""}"
+GAUDI_TIME_PREFIX="${GAUDI_TIME_PREFIX="$GAUDI_PROMPT_DEFAULT_PREFIX"}"
 GAUDI_TIME_SYMBOL="\\ue384"
 GAUDI_TIME_SUFFIX="${GAUDI_TIME_SUFFIX=$GAUDI_PROMPT_DEFAULT_SUFFIX}"
 GAUDI_TIME_FORMAT="${GAUDI_TIME_FORMAT="+%H:%M"}"
@@ -26,7 +26,7 @@ gaudi_time () {
   local 'time_str'
 
   if [[ $GAUDI_TIME_FORMAT != false ]]; then
-    time_str=`date ${GAUDI_TIME_FORMAT}`
+    time_str=$(date "${GAUDI_TIME_FORMAT}")
   fi
 
   gaudi::section \

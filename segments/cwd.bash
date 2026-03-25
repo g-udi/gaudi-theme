@@ -14,7 +14,7 @@
 GAUDI_CWD_SHOW="${GAUDI_CWD_SHOW=true}"
 GAUDI_CWD_SHORTEN="${GAUDI_CWD_SHORTEN=true}"
 GAUDI_CWD_SUMMARY="${GAUDI_CWD_SUMMARY=false}"
-GAUDI_CWD_PREFIX="${GAUDI_CWD_PREFIX=""}"
+GAUDI_CWD_PREFIX="${GAUDI_CWD_PREFIX="$GAUDI_PROMPT_DEFAULT_PREFIX"}"
 GAUDI_CWD_SUFFIX="${GAUDI_CWD_SUFFIX="$GAUDI_PROMPT_DEFAULT_SUFFIX"}"
 GAUDI_CWD_COLOR="${GAUDI_CWD_COLOR="$BACKGROUND_GAUDI_BLUE"}"
 GAUDI_CWD_COLOR_LOCKED="${GAUDI_CWD_COLOR_LOCKED="$GAUDI_WHITE$BACKGROUND_GAUDI_RED"}"
@@ -49,6 +49,7 @@ gaudi_cwd () {
   }
 
   [[ $GAUDI_CWD_SHORTEN == true ]] && GAUDI_CWD=$(gaudi_reduce_path "$PWD") || GAUDI_CWD=$(pwd | sed "s|^${HOME}|~|")
+  # shellcheck disable=SC2012
   [[ $GAUDI_CWD_SUMMARY == true ]] && GAUDI_CWD+=" [$(ls -1 | wc -l | sed 's: ::g') Files, $(ls -lah | grep -m 1 total | sed 's/total //')]"
 
   gaudi::section \
@@ -58,4 +59,3 @@ gaudi_cwd () {
     "$GAUDI_CWD" \
     "$GAUDI_CWD_SUFFIX"
 }
-

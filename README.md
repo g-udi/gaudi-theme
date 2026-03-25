@@ -7,8 +7,8 @@ Gaudi is a modular, asynchronous Bash prompt theme built for the gaudi-bash fram
 Key characteristics:
 
 - **Nerd Font support** -- Segments use Nerd Font glyphs by default for icons (e.g., Git branch, Node.js, Docker). A patched Nerd Font must be installed and active in your terminal for symbols to render correctly. Symbol display can be disabled globally with `GAUDI_ENABLE_SYMBOLS=false`, in which case the segment name is shown as a plain-text fallback.
-- **Modular segment architecture** -- Every segment lives in its own file under `segments/`. Segments are loaded on demand; only those listed in the three prompt arrays are sourced and executed each time the prompt renders.
-- **Async rendering** -- Expensive segments (SCM status, language versions, cloud profiles) run in a background job so the prompt appears instantly and updates in place once results are ready.
+- **Modular segment architecture** -- Every segment lives in its own file under `segments/`. Segments are loaded on demand and sourced once per shell session; only those listed in the three prompt arrays are executed when the prompt renders.
+- **Async rendering** -- Expensive segments (SCM status, language versions, cloud profiles) run in independent background jobs backed by per-segment cache files, so the prompt appears instantly and updates in place as fresh results arrive.
 
 ## Prompt Layout
 
@@ -56,17 +56,19 @@ All global variables use Bash default-value assignment (`${VAR=default}`), so an
 
 ## Async Rendering
 
-Many segments -- particularly SCM, language runtimes, and cloud profiles -- involve shelling out to external commands (`git`, `node`, `docker`, `aws`, etc.) which can introduce noticeable latency. Gaudi solves this with a background rendering pipeline:
+Many segments -- particularly SCM, language runtimes, and cloud profiles -- involve shelling out to external commands (`git`, `node`, `docker`, `aws`, etc.) which can introduce noticeable latency. Gaudi solves this with a file-backed background rendering pipeline:
 
-1. **Initial draw** -- When `PROMPT_COMMAND` fires, `GAUDI_PROMPT_LEFT` and `GAUDI_PROMPT_RIGHT` are rendered synchronously. For the async zone, the **cached result** from the previous render (`_GAUDI_ASYNC_CACHE`) is displayed immediately so the prompt is never blank.
-2. **Background job** -- `gaudi::render_async` is launched as a background process (`&`). It iterates over every segment in `GAUDI_PROMPT_ASYNC`, sources each file, and collects the output.
-3. **In-place overwrite** -- Once the background job finishes, it uses `tput` cursor-movement commands (`sc`, `cuu1`, `rc`) to jump back to the prompt line and overwrite it with the fresh async content.
-4. **Cache update** -- The freshly rendered string is stored in `_GAUDI_ASYNC_CACHE` so the next prompt draw can show it instantly while the next background job runs.
+1. **Initial draw** -- When the prompt hook fires, `GAUDI_PROMPT_LEFT` and `GAUDI_PROMPT_RIGHT` are rendered synchronously. For the async zone, Gaudi reads the last known output for each segment from `${XDG_CACHE_HOME:-$HOME/.cache}/gaudi-bash/theme/gaudi`.
+2. **Global segment priming** -- Uncached global segments such as `aws` and `kubecontext` are rendered synchronously once so a fresh shell does not show a blank prompt and then pop in later.
+3. **Per-segment refresh** -- Every segment in `GAUDI_PROMPT_ASYNC` is refreshed in its own background job. Slow segments no longer block unrelated async segments from appearing.
+4. **Generation guard** -- Each prompt render increments a generation id. Background jobs compare against the current generation before updating cache or repainting, which prevents stale jobs from redrawing over newer prompts.
+5. **In-place overwrite** -- When a segment changes, Gaudi reconstructs the async zone from cache files and redraws only the current prompt.
 
 This design ensures that:
 - The prompt appears without delay.
-- Results persist between renders, preventing flicker or blank segments.
-- Slow external commands never block interactive typing.
+- Global segments can appear immediately on a cold start.
+- Results persist between renders and shell starts.
+- Slow external commands never block interactive typing or unrelated async segments.
 
 ## Available Segments
 
@@ -93,7 +95,7 @@ This design ensures that:
 
 | Segment | Description |
 |---------|-------------|
-| `scm` | Source control management. Shows branch name and working-tree state with color-coded backgrounds: green (clean), red (dirty), orange (staged), yellow (unstaged). Supports Git, Mercurial, and others. |
+| `scm` | Source control management. Shows the current ref plus ahead/behind, stash, merge/rebase state, and Git counters such as `+:N` (staged), `!:N` (changed), `?:N` (untracked), and `x:N` (conflicted). The background changes with repo state: green (clean), orange (staged only), yellow (working tree changes), red (conflicts). Supports Git, Mercurial, and others. |
 
 ### Languages and Runtimes
 
@@ -122,7 +124,7 @@ This design ensures that:
 | `docker` | Docker daemon version. Shown in directories containing `Dockerfile` or `docker-compose.yml`. |
 | `dockercompose` | Docker Compose service status with up/down indicators. |
 | `gcloud` | Active Google Cloud SDK configuration/project. |
-| `kubecontext` | Current Kubernetes context from `kubectl`. |
+| `kubecontext` | Current Kubernetes context and namespace from `kubectl`. |
 | `terraform` | Terraform workspace. Shown in directories containing `.tf` files. |
 | `vagrant` | Vagrant machine status. Shown in directories containing a `Vagrantfile`. |
 | `nix` | Indicates when running inside a Nix shell environment. |

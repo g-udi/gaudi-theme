@@ -21,7 +21,7 @@ gaudi::defined () {
 #   gaudi::section <color> [prefix] [symbol] <content> [suffix]
 gaudi::section () {
 
-    local content color prefix symbol content suffix
+    local color prefix symbol content suffix
 
     [[ -n $1 ]] && color="$1"    || color=""
     [[ -n $2 ]] && prefix="$2"   || prefix=""
@@ -32,7 +32,10 @@ gaudi::section () {
     # gaudi::escape "$color$prefix$symbol $content$suffix${NC}"
     # printf "%b%b%b %b%b%b" "$color" "$prefix" "$symbol" "$content" "$suffix" "${NC}"
 
-    [[ $GAUDI_ENABLE_SYMBOLS == false ]] && symbol="$GAUDI_SYMBOL_ALT " || symbol="$symbol "
+    if [[ $GAUDI_ENABLE_SYMBOLS == false ]]; then
+      symbol="$GAUDI_SYMBOL_ALT"
+    fi
+    [[ -n $symbol ]] && symbol="$symbol "
     # Why are wrapping the cariables with "" you say ?
     # To pass a whole string containing GAUDI_WHITEspaces as a single argument, enclose it in double quotes
     # Like every other program, echo or printf interprets strings separated by GAUDI_WHITEspace as different arguments
@@ -44,6 +47,35 @@ gaudi::section () {
     echo -n "$NC"       # Reset the coloring set in the $color
 }
 
+# Load a segment definition once per shell session.
+# USAGE:
+#   gaudi::load_segment <segment>
+gaudi::load_segment () {
+  local segment="$1"
+  local loaded_var="GAUDI_SEGMENT_LOADED_${segment//[^a-zA-Z0-9_]/_}"
+
+  [[ ${!loaded_var:-0} == 1 ]] && return 0
+
+  source "$GAUDI_ROOT/segments/$segment.bash" || return 1
+  printf -v "$loaded_var" '%s' '1'
+}
+
+# Render a single segment by name.
+# USAGE:
+#   gaudi::render_segment <segment>
+gaudi::render_segment () {
+  local segment="$1"
+  local segment_function="gaudi_${segment}"
+  local info=""
+  local GAUDI_SYMBOL_ALT="$segment"
+
+  gaudi::load_segment "$segment" || return 1
+  gaudi::defined "$segment_function" || return 1
+
+  info="$("$segment_function")"
+  [[ -n $info ]] && printf "%s" "$info"
+}
+
 # Render a prompt section by getting the segments from the segments definitions array
 # USAGE:
 #   gaudi::render_prompt segments <array>
@@ -53,13 +85,10 @@ gaudi::render_prompt () {
   if [[ -n "${_segments}" ]]; then
     for segment in "${_segments[@]}"; do
       local info
-      source "$GAUDI_ROOT/segments/$segment.bash"
-      export GAUDI_SYMBOL_ALT=$segment
-      info="$(gaudi_$segment)"
+      info="$(gaudi::render_segment "$segment")"
       [[ -n "${info}" ]] && _prompt+="$info"
     done
     printf "%s" "$_prompt"
-    unset GAUDI_SYMBOL_ALT
   fi;
 }
 
