@@ -44,18 +44,6 @@ gaudi::section () {
     echo -n "$NC"       # Reset the coloring set in the $color
 }
 
-# Kill all background gaudi::render_async that are running in the wrong context
-# Wrong context is any directory (CWD) that is not the current directory
-# USAGE:
-#   gaudi::kill_outdated_asyncRender
-gaudi::kill_outdated_asyncRender () {
-  joblist="$(jobs | grep 'render_async.*wd:' | cut -d "[" -f2 | cut -d "]" -f1 | tr '\n' ' ')"
-  IFS=' '
-  for job in $joblist; do kill "%$job"; done
-  # reset IFS as it can break the function of many others
-  unset IFS
-}
-
 # Render a prompt section by getting the segments from the segments definitions array
 # USAGE:
 #   gaudi::render_prompt segments <array>
