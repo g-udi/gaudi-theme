@@ -36,9 +36,9 @@ gaudi::prompt () {
   # Unless you put a .hushlogin in every single directory, it will only see ~/.hushlogin if you open a new tab when you're in ~.
   # This is in direct conflict with the feature of preserving the current working directory
   # This checks if we are using the MacOSX Terminal app and clear the screen before that
-  if [[ $TERM_PROGRAM == "Apple_Terminal" ]]  && [[ $GAUDI_FIRST_RUN == true ]] && [[ $GAUDI_ENABLE_HUSHLOGIN == true ]]; then
+  if [[ $TERM_PROGRAM == "Apple_Terminal" ]] && [[ "${GAUDI_FIRST_RUN:-}" == true ]] && [[ $GAUDI_ENABLE_HUSHLOGIN == true ]]; then
     # Clears and reset the lines printed in the terminal
-    unset GAUDI_FIRST_RUN
+    :
   fi
 
   # Check and kill any irreelvant background jobs
@@ -94,9 +94,14 @@ gaudi::prompt () {
   #   $LINENO – displays the current line number within the script
   PS4='$0.$LINENO+ '
 
-  # Check the async side of the prompt if available
-  set +m
-  gaudi::render_async &
+  # Skip async rendering on the very first prompt (new tab/window)
+  # to avoid visual flash before the terminal is fully settled
+  if [[ -z "${GAUDI_FIRST_RUN:-}" ]]; then
+    set +m
+    gaudi::render_async &
+  else
+    unset GAUDI_FIRST_RUN
+  fi
 
   ## cleanup
   unset LEFT_PROMPT RIGHT_PROMPT ASYNC_PROMPT
