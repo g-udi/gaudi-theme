@@ -24,6 +24,7 @@ GAUDI_DURATION_MIN_SECONDS="${GAUDI_DURATION_MIN_SECONDS=1}"
 gaudi_duration() {
 
 	[[ $GAUDI_DURATION_SHOW == false ]] && return
+	gaudi::defined _command_duration || return
 
 	export COMMAND_DURATION_MIN_SECONDS="$GAUDI_DURATION_MIN_SECONDS"
 

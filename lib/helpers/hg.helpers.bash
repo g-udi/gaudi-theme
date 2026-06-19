@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2034
 
 GAUDI_SCM_HG='hg'
 GAUDI_SCM_HG_CHAR='\uf223'
@@ -11,7 +12,8 @@ GAUDI_SCM_HG_CHAR='\uf223'
 # - .hg is located in ~/Projects/Foo/.hg
 # - get_hg_root starts at ~/Projects/Foo/Bar and sees that there is no .hg directory, so then it goes into ~/Projects/Foo
 get_hg_root () {
-    local CURRENT_DIR=$(pwd)
+    local CURRENT_DIR=""
+    CURRENT_DIR="$(pwd)"
 
     while [[ "$CURRENT_DIR" != "/" ]]; do
         if [[ -d "$CURRENT_DIR/.hg" ]]; then
@@ -19,7 +21,7 @@ get_hg_root () {
             return
         fi
 
-        CURRENT_DIR=$(dirname $CURRENT_DIR)
+        CURRENT_DIR="$(dirname "$CURRENT_DIR")"
     done
 }
 

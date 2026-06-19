@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 #
 # System
 #
@@ -26,8 +27,24 @@ GAUDI_SYSTEM_HDD_COLOR="${GAUDI_SYSTEM_HDD_COLOR="$GAUDI_CYAN"}"
 gaudi_system () {
   [[ $GAUDI_SYSTEM_SHOW == false ]] && return
 
-  [[ -n "$GAUDI_CPU_LOAD" ]] && gaudi::section "$GAUDI_SYSTEM_CPU_COLOR" "$GAUDI_SYSTEM_PREFIX" "$GAUDI_SYSTEM_CPU_SYMBOL" "${GAUDI_CPU_LOAD}%" "$GAUDI_SYSTEM_SUFFIX"
-  [[ -n "$GAUDI_MEMORY_FREE" ]] && gaudi::section "$GAUDI_SYSTEM_MEMORY_COLOR" "$GAUDI_SYSTEM_PREFIX" "$GAUDI_SYSTEM_MEMORY_SYMBOL" "${GAUDI_MEMORY_FREE}GB" "$GAUDI_SYSTEM_SUFFIX"
-  [[ -n "$GAUDI_HDD_USAGE" ]] && gaudi::section "$GAUDI_SYSTEM_HDD_COLOR" "$GAUDI_SYSTEM_PREFIX" "$GAUDI_SYSTEM_HDD_SYMBOL" "$GAUDI_HDD_USAGE" "$GAUDI_SYSTEM_SUFFIX"
+  local rendered=false
 
+  gaudi::collect_system_stats
+
+  if [[ -n "${GAUDI_CPU_LOAD:-}" ]]; then
+    gaudi::section "$GAUDI_SYSTEM_CPU_COLOR" "$GAUDI_SYSTEM_PREFIX" "$GAUDI_SYSTEM_CPU_SYMBOL" "${GAUDI_CPU_LOAD}%" "$GAUDI_SYSTEM_SUFFIX"
+    rendered=true
+  fi
+
+  if [[ -n "${GAUDI_MEMORY_FREE:-}" ]]; then
+    gaudi::section "$GAUDI_SYSTEM_MEMORY_COLOR" "$GAUDI_SYSTEM_PREFIX" "$GAUDI_SYSTEM_MEMORY_SYMBOL" "${GAUDI_MEMORY_FREE}GB" "$GAUDI_SYSTEM_SUFFIX"
+    rendered=true
+  fi
+
+  if [[ -n "${GAUDI_HDD_USAGE:-}" ]]; then
+    gaudi::section "$GAUDI_SYSTEM_HDD_COLOR" "$GAUDI_SYSTEM_PREFIX" "$GAUDI_SYSTEM_HDD_SYMBOL" "$GAUDI_HDD_USAGE" "$GAUDI_SYSTEM_SUFFIX"
+    rendered=true
+  fi
+
+  [[ "$rendered" == true ]]
 }

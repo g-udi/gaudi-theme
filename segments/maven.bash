@@ -22,12 +22,14 @@ gaudi_maven () {
   [[ $GAUDI_MAVEN_SHOW == false ]] && return
 
   # Check if local ./mvnw first or system mvn is available
-   gaudi::exists mvn || return
+  gaudi::exists mvn || return
 
   # Check if maven project
   [[ -f pom.xml ]] || return
 
-  local mvn_version=$(mvn --version 2>&1 | grep '^Apache Maven' | awk -F ' ' '{print $3}')
+  local mvn_version=""
+  mvn_version="$(mvn --version 2>&1 | grep '^Apache Maven' | awk -F ' ' '{print $3}')"
+  [[ -n "$mvn_version" ]] || return
 
   gaudi::section \
     "$GAUDI_MAVEN_COLOR" \

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2034
 
 GAUDI_SCM_P4='p4'
 GAUDI_SCM_P4_CHAR='⌛'
@@ -51,9 +52,11 @@ _p4-opened-counts () {
 }
 
 p4_prompt_vars () {
+  local opened_count="" non_default_changes="" default_count=""
+
   IFS=$'\t' read -r \
      opened_count non_default_changes default_count \
-     add_file_count edit_file_count delete_file_count \
+     _ \
      <<< "$(_p4-opened-counts)"
   if [[ "${opened_count}" -gt 0 ]]; then
     GAUDI_SCM_DIRTY=1

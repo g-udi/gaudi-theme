@@ -23,30 +23,34 @@ GAUDI_XCODE_COLOR="${GAUDI_XCODE_COLOR=""}"
 # Show current version of Xcode
 gaudi_xcode () {
   gaudi::exists xcenv || return
+  gaudi::exists defaults || return
 
-  local 'xcode_path'
+  [[ $GAUDI_XCODE_SHOW_GLOBAL == false && $GAUDI_XCODE_SHOW_LOCAL == false ]] && return
 
-  if [[ $GAUDI_SWIFT_SHOW_GLOBAL == true ]] ; then
-    xcode_path=$(xcenv version | sed 's/ .*//')
-  elif [[ $GAUDI_SWIFT_SHOW_LOCAL == true ]] ; then
-    if xcenv version | grep ".xcode-version" > /dev/null; then
-      xcode_path=$(xcenv version | sed 's/ .*//')
+  local xcode_path="" xcode_version_path="" xcode_version="" xcenv_version=""
+
+  xcenv_version="$(xcenv version 2>/dev/null)" || return
+
+  if [[ $GAUDI_XCODE_SHOW_GLOBAL == true ]] ; then
+    xcode_path="$(printf "%s" "$xcenv_version" | sed 's/ .*//')"
+  elif [[ $GAUDI_XCODE_SHOW_LOCAL == true ]] ; then
+    if printf "%s" "$xcenv_version" | grep -q "\.xcode-version"; then
+      xcode_path="$(printf "%s" "$xcenv_version" | sed 's/ .*//')"
     fi
   fi
 
-  if [[ -n "${xcode_path}" ]]; then
-    local xcode_version_path=$xcode_path"/Contents/version.plist"
-    if [[ -f ${xcode_version_path} ]]; then
-      if gaudi::exists defaults; then
-        local xcode_version=$(defaults read ${xcode_version_path} CFBundleShortVersionString)
+  [[ -n "$xcode_path" ]] || return
 
-        gaudi::section \
-          "$GAUDI_XCODE_COLOR" \
-          "$GAUDI_XCODE_PREFIX" \
-          "$GAUDI_XCODE_SYMBOL" \
-          "$xcode_version" \
-          "$GAUDI_XCODE_SUFFIX"
-      fi
-    fi
-  fi
+  xcode_version_path="${xcode_path}/Contents/version.plist"
+  [[ -f "$xcode_version_path" ]] || return
+
+  xcode_version="$(defaults read "$xcode_version_path" CFBundleShortVersionString 2>/dev/null)" || return
+  [[ -n "$xcode_version" ]] || return
+
+  gaudi::section \
+    "$GAUDI_XCODE_COLOR" \
+    "$GAUDI_XCODE_PREFIX" \
+    "$GAUDI_XCODE_SYMBOL" \
+    "$xcode_version" \
+    "$GAUDI_XCODE_SUFFIX"
 }

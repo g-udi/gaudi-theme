@@ -27,16 +27,18 @@ gaudi_docker () {
   gaudi::exists docker || return
 
   # Better support for docker environment vars: https://docs.docker.com/compose/reference/envvars/
-  local compose_exists=false docker_version
-  if [[ -n "$COMPOSE_FILE" ]]; then
+  local compose_exists=false docker_version filename
+  if [[ -n "${COMPOSE_FILE:-}" ]]; then
     # Use COMPOSE_PATH_SEPARATOR or colon as default
-    local separator=${COMPOSE_PATH_SEPARATOR:-":"}
+    local separator="${COMPOSE_PATH_SEPARATOR:-:}"
+    local IFS="$separator"
+    local -a filenames=()
 
     # COMPOSE_FILE may have several filenames separated by colon, test all of them
-    local filenames=("${@ps/$separator/COMPOSE_FILE}")
+    read -r -a filenames <<< "$COMPOSE_FILE"
 
     for filename in "${filenames[@]}"; do
-      if [[ ! -f $filename ]]; then
+      if [[ ! -f "$filename" ]]; then
         compose_exists=false
         break
       fi

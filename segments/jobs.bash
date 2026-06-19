@@ -24,7 +24,8 @@ GAUDI_JOBS_AMOUNT_THRESHOLD="${GAUDI_JOBS_AMOUNT_THRESHOLD=1}"
 gaudi_jobs () {
   [[ $GAUDI_JOBS_SHOW == false ]] && return
 
-  local jobs_amount=$( jobs -r | awk '!/wd/' | wc -l | tr -d " ")
+  local jobs_amount=""
+  jobs_amount="$(jobs -r | awk '!/wd/' | wc -l | tr -d " ")"
 
   [[ $jobs_amount -gt 0 ]] || return
 

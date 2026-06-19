@@ -29,7 +29,9 @@ gaudi_gradle () {
   # Check if gradle project
   [[ -f build.gradle || -f build.gradle.kts ]] || return
 
-  local gradle_version=$(gradle --version 2>&1 | grep '^Gradle' | awk -F ' ' '{print $2}')
+  local gradle_version=""
+  gradle_version="$(gradle --version 2>&1 | grep '^Gradle' | awk -F ' ' '{print $2}')"
+  [[ -n "$gradle_version" ]] || return
 
   gaudi::section \
     "$GAUDI_GRADLE_COLOR" \
@@ -38,4 +40,3 @@ gaudi_gradle () {
     "v.$gradle_version" \
     "$GAUDI_GRADLE_SUFFIX"
 }
-

@@ -46,7 +46,7 @@ gaudi_node () {
     return
   fi
 
-  [[ $node_version == $GAUDI_NODE_DEFAULT_VERSION ]] && return
+  [[ $node_version == "$GAUDI_NODE_DEFAULT_VERSION" ]] && return
 
   gaudi::section \
     "$GAUDI_NODE_COLOR" \
