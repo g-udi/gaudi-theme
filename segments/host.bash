@@ -17,8 +17,11 @@ GAUDI_HOST_COLOR_SSH="${GAUDI_HOST_COLOR_SSH="$GAUDI_BLACK$BACKGROUND_GAUDI_YELL
 # Section
 # ------------------------------------------------------------------------------
 
-# If there is an ssh connections, current machine name.
-gaudi_host () {
+# If there is an ssh connections, current machine name. Leaves the section in
+# GAUDI_THEME_REPLY; the name comes from bash's own HOSTNAME variable, so
+# `hostname` is only run if that is empty.
+gaudi::segment_host () {
+  GAUDI_THEME_REPLY=""
   [[ $GAUDI_HOST_SHOW == false ]] && return
 
   if [[ $GAUDI_HOST_SHOW == 'always' ]] || [[ -n $SSH_CONNECTION ]]; then
@@ -31,11 +34,16 @@ gaudi_host () {
       host_color=$GAUDI_HOST_COLOR
     fi
 
-    gaudi::section \
+    gaudi::set_section \
       "$host_color" \
       "$GAUDI_HOST_PREFIX" \
       "" \
-      "$(hostname)" \
+      "${HOSTNAME:-$(hostname)}" \
       "$GAUDI_HOST_SUFFIX"
   fi
+}
+
+gaudi_host () {
+  gaudi::segment_host
+  printf '%s' "$GAUDI_THEME_REPLY"
 }

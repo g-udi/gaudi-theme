@@ -27,7 +27,7 @@ gaudi_ruby () {
   [[ $GAUDI_RUBY_SHOW == false ]] && return
 
   # Show versions only for Ruby-specific folders
-  [[ -f Gemfile || -f Rakefile || -n $(find . -not -path '*/\.*' -maxdepth 1 -name "*.rb") ]] || return
+  [[ -f Gemfile || -f Rakefile ]] || gaudi::has_files '*.rb' || return
 
   local 'ruby_version'
 

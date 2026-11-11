@@ -4,6 +4,15 @@
 #
 # The AWS Command Line Interface (CLI) is a unified tool to manage AWS services.
 # Link: https://aws.amazon.com/cli/
+#
+# The segment is read from the environment of the current shell on every prompt
+# (it is never cached on disk), so two shells with different profiles each show
+# their own. The first non-empty value wins:
+#
+#   AWS_VAULT             set by `aws-vault exec <profile>`
+#   AWS_PROFILE           profile used by the AWS CLI and the SDKs
+#   AWS_DEFAULT_PROFILE   older name, still honoured by the AWS CLI
+#   CURRENT_AWS_PROFILE   legacy variable of this theme
 
 # ------------------------------------------------------------------------------
 # Configuration
@@ -19,26 +28,38 @@ GAUDI_AWS_COLOR="${GAUDI_AWS_COLOR="$GAUDI_YELLOW"}"
 # Section
 # ------------------------------------------------------------------------------
 
-# Shows selected AWS-cli profile.
-gaudi_aws () {
+# Shows selected AWS-cli profile. Leaves the section in GAUDI_THEME_REPLY
+# without forking.
+gaudi::segment_aws () {
+  local profile=""
+
+  GAUDI_THEME_REPLY=""
   [[ $GAUDI_AWS_SHOW == false ]] && return
 
-  # Check if the AWS-cli is installed
-  gaudi::exists aws || return
-
-  # Backwards compatibility with old awscli versions
-  [[ -z $CURRENT_AWS_PROFILE ]] &&
-    CURRENT_AWS_PROFILE=$AWS_DEFAULT_PROFILE
+  if [[ -n "${AWS_VAULT:-}" ]]; then
+    profile="$AWS_VAULT"
+  else
+    # Check if the AWS-cli is installed
+    gaudi::exists aws || return 0
+    profile="${AWS_PROFILE:-${AWS_DEFAULT_PROFILE:-${CURRENT_AWS_PROFILE:-}}}"
+  fi
 
   # Is the current profile not the default profile
-  [[ -z $CURRENT_AWS_PROFILE ]] || [[ "$CURRENT_AWS_PROFILE" == "default" ]] &&
-    return
+  [[ -z "$profile" || "$profile" == "default" ]] && return
+
+  # The prompt layout is printed with `printf %b`: keep backslashes literal.
+  profile="${profile//\\/\\\\}"
 
   # Show prompt section
-  gaudi::section \
+  gaudi::set_section \
     "$GAUDI_AWS_COLOR" \
     "$GAUDI_AWS_PREFIX" \
     "$GAUDI_AWS_SYMBOL" \
-    "$CURRENT_AWS_PROFILE" \
+    "$profile" \
     "$GAUDI_AWS_SUFFIX"
+}
+
+gaudi_aws () {
+  gaudi::segment_aws
+  printf '%s' "$GAUDI_THEME_REPLY"
 }

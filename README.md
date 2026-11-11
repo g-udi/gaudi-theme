@@ -8,7 +8,7 @@ Key characteristics:
 
 - **Nerd Font support** -- Segments use Nerd Font glyphs by default for icons (e.g., Git branch, Node.js, Docker). A patched Nerd Font must be installed and active in your terminal for symbols to render correctly. Symbol display can be disabled globally with `GAUDI_ENABLE_SYMBOLS=false`, in which case the segment name is shown as a plain-text fallback.
 - **Modular segment architecture** -- Every segment lives in its own file under `segments/`. Segments are loaded on demand and sourced once per shell session; only those listed in the three prompt arrays are executed when the prompt renders.
-- **Async rendering** -- Expensive segments (SCM status, language versions, cloud profiles) run in independent background jobs backed by per-segment cache files, so the prompt appears instantly and updates in place as fresh results arrive.
+- **Async rendering** -- Expensive segments (SCM status, language versions, Kubernetes context) run in a background worker backed by per-segment cache files, so the prompt appears instantly and updates in place as fresh results arrive.
 
 ## Prompt Layout
 
@@ -37,7 +37,7 @@ When `GAUDI_SPLIT_PROMPT=false`, all zones are concatenated on a single line wit
 >> _
 ```
 
-The prompt character (`>>`) appears on the line below. It is green on success and can be customized via the `char` segment.
+The prompt character (`>>`) appears on the line below. It is drawn from the exit status of the last command: green when it succeeded, red when it failed. Symbol and colours can be customized through the `char` segment (see [Prompt character and continuation prompt](#prompt-character-and-continuation-prompt)).
 
 ## Configuration
 
@@ -56,19 +56,23 @@ All global variables use Bash default-value assignment (`${VAR=default}`), so an
 
 ## Async Rendering
 
-Many segments -- particularly SCM, language runtimes, and cloud profiles -- involve shelling out to external commands (`git`, `node`, `docker`, `aws`, etc.) which can introduce noticeable latency. Gaudi solves this with a file-backed background rendering pipeline:
+Many segments -- particularly SCM, language runtimes, and Kubernetes context -- involve shelling out to external commands (`git`, `node`, `docker`, `kubectl`, etc.) which can introduce noticeable latency. Gaudi solves this with a file-backed background rendering pipeline:
 
 1. **Initial draw** -- When the prompt hook fires, `GAUDI_PROMPT_LEFT` and `GAUDI_PROMPT_RIGHT` are rendered synchronously. For the async zone, Gaudi reads the last known output for each segment from `${XDG_CACHE_HOME:-$HOME/.cache}/gaudi-bash/theme/gaudi`.
-2. **Global segment priming** -- Uncached global segments such as `aws` and `kubecontext` are rendered synchronously once so a fresh shell does not show a blank prompt and then pop in later.
-3. **Per-segment refresh** -- Every segment in `GAUDI_PROMPT_ASYNC` is refreshed in its own background job. Slow segments no longer block unrelated async segments from appearing.
-4. **Generation guard** -- Each prompt render increments a generation id. Background jobs compare against the current generation before updating cache or repainting, which prevents stale jobs from redrawing over newer prompts.
-5. **In-place overwrite** -- When a segment changes, Gaudi reconstructs the async zone from cache files and redraws only the current prompt.
+2. **Environment segments** -- `aws` only depends on the environment of the current shell, so it is rendered in-process on every prompt (no fork, no cache file, no worker), even when it is listed in `GAUDI_PROMPT_ASYNC`. Each shell always shows its own profile.
+3. **Global segment priming** -- An uncached global segment such as `kubecontext` is rendered synchronously once so a fresh shell does not show a blank prompt and then pop in later.
+4. **Background refresh** -- The remaining segments in `GAUDI_PROMPT_ASYNC` are refreshed one after the other by a single background worker per prompt; the prompt is redrawn each time a segment's output changes. Nothing a segment prints on stderr reaches the terminal.
+5. **One worker per shell** -- A new prompt cancels the worker started by the previous prompt of the same shell if it is still running, and a worker stops by itself as soon as it notices a newer prompt. A command that was already running when the worker was cancelled is left to finish on its own.
+6. **Generation guard** -- Each prompt render increments a generation id. The worker compares against the current generation before updating cache or repainting, which prevents stale jobs from redrawing over newer prompts.
+7. **In-place overwrite** -- When a segment changes, Gaudi reconstructs the async zone from cache files and redraws only the current prompt.
 
 This design ensures that:
 - The prompt appears without delay.
-- Global segments can appear immediately on a cold start.
+- Environment and global segments can appear immediately on a cold start.
 - Results persist between renders and shell starts.
-- Slow external commands never block interactive typing or unrelated async segments.
+- Slow external commands never block interactive typing.
+
+Per-shell state lives in `${XDG_CACHE_HOME:-$HOME/.cache}/gaudi-bash/theme/gaudi/state/<shell pid>` and is removed when the shell exits.
 
 ## Available Segments
 
@@ -76,14 +80,13 @@ This design ensures that:
 
 | Segment | Description |
 |---------|-------------|
-| `char` | Prompt character (`>>`). Changes color based on last command exit status (green on success, red on failure). |
-| `continuation` | PS2 continuation prompt character displayed during multi-line input. |
-| `cwd` | Current working directory with intelligent path shortening. Shows a lock indicator when the directory is not writable. Optionally displays file count and total size. |
+| `char` | Prompt character (`>>`). Changes color based on last command exit status (green on success, red on failure). Always drawn on the last line of the prompt; it is not listed in the prompt arrays. |
+| `continuation` | PS2 continuation prompt character displayed during multi-line input. Always active; it is not listed in the prompt arrays. |
+| `cwd` | Current working directory, with `$HOME` shown as `~` and long paths shortened (see [Working directory](#working-directory)). Uses a different colour when the directory is not writable. Optionally displays file count and total size. |
 | `duration` | Execution time of the last command. Only appears when the command exceeded a configurable threshold (default: 1 second). |
 | `host` | Hostname. Highlights differently when connected via SSH. |
 | `jobs` | Number of background jobs. Only appears when the count meets a configurable threshold. |
 | `multiplexer` | Detached tmux and GNU Screen session counts. |
-| `separator` | Inserts a newline to split the prompt across multiple lines. |
 | `shlvl` | Current shell nesting level (`SHLVL`). Useful for detecting nested shells spawned from editors or nix-shell. Only shown when depth exceeds a threshold (default: 2). |
 | `system` | System statistics: CPU load, memory usage, and disk usage. |
 | `time` | Current time in a configurable format (default: `HH:MM`). |
@@ -120,7 +123,7 @@ This design ensures that:
 
 | Segment | Description |
 |---------|-------------|
-| `aws` | Active AWS CLI profile (`AWS_DEFAULT_PROFILE` / `CURRENT_AWS_PROFILE`). Hidden when set to `default`. |
+| `aws` | Active AWS profile, read from the environment of the current shell on every prompt: the first non-empty of `AWS_VAULT`, `AWS_PROFILE`, `AWS_DEFAULT_PROFILE`, `CURRENT_AWS_PROFILE`. Hidden when empty or `default`, and (outside an `aws-vault` session) when the AWS CLI is not installed. |
 | `docker` | Docker daemon version. Shown in directories containing `Dockerfile` or `docker-compose.yml`. |
 | `dockercompose` | Docker Compose service status with up/down indicators. |
 | `gcloud` | Active Google Cloud SDK configuration/project. |
@@ -165,11 +168,50 @@ Some segments expose additional variables. For example:
 - `GAUDI_DURATION_MIN_SECONDS` -- Minimum command duration (in seconds) before the segment appears.
 - `GAUDI_SCM_FETCH` -- Whether to run `git fetch` automatically.
 - `GAUDI_RUST_SHOW_TOOLCHAIN` -- Display the active Rust toolchain alongside the version.
-- `GAUDI_CWD_SHORTEN` -- Intelligently shorten long directory paths.
+- `GAUDI_CWD_SHORTEN` -- Shorten long directory paths (default `true`).
+- `GAUDI_CWD_MAX_LENGTH` -- Length a path may reach before it is shortened (default `33`).
 - `GAUDI_CWD_SUMMARY` -- Append file count and directory size to the path.
 - `GAUDI_SHLVL_THRESHOLD` -- Minimum shell depth before the segment appears.
 
 Refer to the header of each segment file in `segments/` for the full list of supported variables.
+
+### Working directory
+
+With `GAUDI_CWD_SHORTEN=true` a path longer than `GAUDI_CWD_MAX_LENGTH` characters is shortened as follows:
+
+1. `$HOME` is shown as `~` (and `/` as `⚠ ROOT`).
+2. Parent directories are abbreviated to their first character, one at a time, longest first (leftmost first when equally long), until the path fits. Hidden directories keep their dot (`.config` becomes `.c`).
+3. The last element -- the directory you are in -- is never abbreviated.
+4. If the path is still too long once every parent is abbreviated, its middle is replaced with `…`.
+
+| Directory | `GAUDI_CWD_MAX_LENGTH` | Shown as |
+|-----------|------------------------|----------|
+| `~/Projects/organisation/repository/src` | `33` | `~/Projects/o/repository/src` |
+| `~/Projects/organisation/repository/src` | `20` | `~/Projects/o/r/src` |
+| `/var/lib/containers/storage/overlay` | `16` | `/v/l/c/s/overlay` |
+| `~/.config/something/deep` | `12` | `~/.c/s/deep` |
+
+With `GAUDI_CWD_SHORTEN=false` the full path is shown, with `$HOME` as `~`.
+
+### Prompt character and continuation prompt
+
+The `char` segment draws the last line of `PS1`; the `continuation` segment draws `PS2`. Set these before the theme loads:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GAUDI_CHAR_SYMBOL` | `>>` | Prompt character. |
+| `GAUDI_CHAR_PREFIX` | empty | Text before the prompt character. |
+| `GAUDI_CHAR_SUFFIX` | `" "` | Text after the prompt character. |
+| `GAUDI_CHAR_COLOR_SUCCESS` | `$GAUDI_GREEN` | Colour after a command that succeeded. |
+| `GAUDI_CHAR_COLOR_FAILURE` | `$GAUDI_RED` | Colour after a command that failed (non-zero exit status). |
+| `GAUDI_CONTINUATION_SYMBOL` | `\uf6d7` | Continuation prompt symbol. |
+| `GAUDI_CONTINUATION_PREFIX` | empty | Text before the continuation symbol. |
+| `GAUDI_CONTINUATION_SUFFIX` | `\t` | Text after the continuation symbol. |
+| `GAUDI_CONTINUATION_COLOR` | `$GAUDI_YELLOW` | Continuation prompt colour. |
+
+Colours are plain escape sequences (`$GAUDI_RED`, `$'\e[35m'`, ...); the theme wraps them in `\[ \]` for readline. A value that is already wrapped is used as it is.
+
+The continuation prompt used to share the `GAUDI_CHAR_PREFIX`, `GAUDI_CHAR_SUFFIX`, `GAUDI_CHAR_SYMBOL` and `GAUDI_CHAR_COLOR_SUCCESS` variables with the prompt character. For compatibility, a `GAUDI_CHAR_*` value set before the theme loads is still used for the continuation prompt when the matching `GAUDI_CONTINUATION_*` variable is not set. Set the `GAUDI_CONTINUATION_*` variable to give the two prompts different values.
 
 ## Customizing the Prompt
 
@@ -264,10 +306,25 @@ Key rules:
 2. The entry-point function must be named `gaudi_<segment>` (matching the filename).
 3. Use `gaudi::exists` to check for external commands and return early if they are not available.
 4. Use `gaudi::section` to produce correctly formatted and colored output.
-5. Add context detection (check for project files, environment variables, etc.) so the segment only appears when relevant.
+5. Add context detection (check for project files, environment variables, etc.) so the segment only appears when relevant. `gaudi::has_files '*.ext' ['*.other' ...]` tells whether the current directory holds a matching entry without forking `find`.
+
+A segment in `GAUDI_PROMPT_LEFT` or `GAUDI_PROMPT_RIGHT` is rendered on every prompt and costs one subshell. A segment that needs no external command can avoid even that by also defining `gaudi::segment_<segment>`, a function that leaves its output in `GAUDI_THEME_REPLY` instead of printing it (build it with `gaudi::set_section`, which takes the same arguments as `gaudi::section`); see `segments/time.bash` for an example. Such a function runs in the interactive shell itself, so it must declare every variable it uses `local`.
 
 Then add the segment name to one of the prompt arrays:
 
 ```bash
 GAUDI_PROMPT_ASYNC+=( mysegment )
 ```
+
+## Development
+
+The theme finds its own files from the location of `gaudi.theme.bash`, so it can be sourced from any checkout (`$GAUDI_BASH/components/themes/gaudi` is only the fallback).
+
+Run the tests with:
+
+```bash
+test/run.bash              # bash found in PATH
+/bin/bash test/run.bash    # a specific bash
+```
+
+The runner is plain bash (no bats, no network) and works in a temporary directory: `HOME` and `XDG_CACHE_HOME` point into it, so your own home and cache are not touched. The same script, plus `shellcheck -S warning`, runs in CI on Linux and macOS (`.github/workflows/ci.yml`).

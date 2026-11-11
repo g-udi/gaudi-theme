@@ -13,6 +13,10 @@ GAUDI_THEME_STATE_DIR="${GAUDI_THEME_CACHE_ROOT}/state/${GAUDI_THEME_SHELL_ID}"
 GAUDI_THEME_GENERATION_FILE="${GAUDI_THEME_STATE_DIR}/generation"
 GAUDI_THEME_GENERATION="${GAUDI_THEME_GENERATION:-0}"
 
+# Process id of the async worker that is currently running for this shell (see
+# gaudi::register_async_worker and gaudi::cancel_async_worker).
+GAUDI_THEME_WORKER_FILE="${GAUDI_THEME_STATE_DIR}/worker"
+
 # Helpers named gaudi::set_* return their result in GAUDI_THEME_REPLY instead
 # of printing it, so the prompt can be assembled without forking a subshell
 # for every value.
@@ -33,7 +37,8 @@ gaudi::cleanup_shell_state () {
   local status=$?
 
   if [[ "$GAUDI_THEME_SHELL_ID" == "$$" && "$GAUDI_THEME_STATE_DIR" == */state/"$$" ]]; then
-    rm -f "$GAUDI_THEME_GENERATION_FILE" 2> /dev/null
+    gaudi::cancel_async_worker
+    rm -f "$GAUDI_THEME_GENERATION_FILE" "$GAUDI_THEME_WORKER_FILE" 2> /dev/null
     rmdir "$GAUDI_THEME_STATE_DIR" 2> /dev/null
   fi
 
@@ -63,20 +68,27 @@ gaudi::register_exit_cleanup () {
   fi
 }
 
+# Write a file through a temporary file and a rename, so a reader never sees a
+# half-written cache. The temporary name is remembered in
+# GAUDI_THEME_PENDING_FILE while it exists, which lets a worker that is
+# cancelled in the middle of a write remove it on its way out.
 gaudi::write_atomic () {
   local file="$1"
   local content="$2"
   local dir="${file%/*}"
   local tmp_file=""
 
-  mkdir -p "$dir" || return 1
-  tmp_file="$(mktemp "${dir}/.gaudi.XXXXXX")" || return 1
-  printf "%s" "$content" > "$tmp_file" || {
+  [[ -d "$dir" ]] || mkdir -p "$dir" || return 1
+  tmp_file="${dir}/.gaudi.$$.${RANDOM}${RANDOM}"
+  GAUDI_THEME_PENDING_FILE="$tmp_file"
+
+  printf "%s" "$content" > "$tmp_file" && mv "$tmp_file" "$file" || {
     rm -f "$tmp_file"
+    GAUDI_THEME_PENDING_FILE=""
     return 1
   }
 
-  mv "$tmp_file" "$file"
+  GAUDI_THEME_PENDING_FILE=""
 }
 
 gaudi::hash_string () {
@@ -88,10 +100,45 @@ gaudi::hash_string () {
 
 gaudi::async_segment_is_global () {
   case "$1" in
-    aws|kubecontext) return 0 ;;
+    kubecontext) return 0 ;;
   esac
 
   return 1
+}
+
+# Segments of the async zone that only depend on the environment of the current
+# shell. They are rendered in-process on every prompt (no fork, no cache file,
+# no worker), so two shells never show each other's value. Such a segment must
+# define `gaudi::segment_<name>`, which leaves its output in GAUDI_THEME_REPLY.
+gaudi::async_segment_is_inline () {
+  case "$1" in
+    aws) return 0 ;;
+  esac
+
+  return 1
+}
+
+# Render an inline segment into GAUDI_THEME_REPLY. The shell that draws the
+# prompt renders it and remembers the result in GAUDI_THEME_INLINE_<segment>;
+# the async worker gets those variables through its environment and reuses
+# them, so a redraw shows exactly what the prompt showed.
+gaudi::set_inline_async_segment () {
+  local segment="$1"
+  local inline_var="GAUDI_THEME_INLINE_${1//[^a-zA-Z0-9_]/_}"
+
+  if [[ -n "${GAUDI_THEME_WORKER:-}" ]]; then
+    GAUDI_THEME_REPLY="${!inline_var:-}"
+    return 0
+  fi
+
+  GAUDI_THEME_REPLY=""
+  gaudi::load_segment "$segment" || return 1
+  gaudi::defined "gaudi::segment_${segment}" || return 1
+
+  # shellcheck disable=SC2034
+  local GAUDI_SYMBOL_ALT="$segment"
+  "gaudi::segment_${segment}"
+  printf -v "$inline_var" '%s' "$GAUDI_THEME_REPLY"
 }
 
 gaudi::async_segment_scope () {
@@ -202,9 +249,13 @@ gaudi::set_composed_prompt_line () {
   local right_length=""
   local padding=0
 
+  # `printf -v` with an empty result leaves stale data in the variable on
+  # bash 3.2, so empty input is handled without it.
+  GAUDI_THEME_REPLY=""
+
   [[ -n "$right" ]] || {
-    printf -v GAUDI_THEME_REPLY "%b" "$left"
-    return
+    [[ -n "$left" ]] && printf -v GAUDI_THEME_REPLY "%b" "$left"
+    return 0
   }
 
   gaudi::set_terminal_columns
@@ -216,8 +267,8 @@ gaudi::set_composed_prompt_line () {
   padding=$((columns - left_length - right_length))
 
   if [[ "$padding" -le 0 ]]; then
-    printf -v GAUDI_THEME_REPLY "%b" "$left"
-    return
+    [[ -n "$left" ]] && printf -v GAUDI_THEME_REPLY "%b" "$left"
+    return 0
   fi
 
   printf -v GAUDI_THEME_REPLY "%b%*s%b" "$left" "$padding" "" "$right"
@@ -251,7 +302,7 @@ gaudi::set_prompt_layout () {
   local layout=""
 
   if [[ $GAUDI_SPLIT_PROMPT == false ]]; then
-    printf -v layout "%b%b" "$right_prompt" "$left_async_prompt"
+    [[ -n "${right_prompt}${left_async_prompt}" ]] && printf -v layout "%b%b" "$right_prompt" "$left_async_prompt"
   elif [[ $GAUDI_SPLIT_PROMPT_TWO_LINES == true && -n "$right_prompt" ]]; then
     gaudi::set_composed_prompt_line "" "$right_prompt"
     printf -v layout "%s\n%b" "$GAUDI_THEME_REPLY" "$left_async_prompt"
@@ -306,6 +357,11 @@ gaudi::set_cached_async_prompt () {
   declare -a segments=("${!1}")
 
   for segment in "${segments[@]}"; do
+    if gaudi::async_segment_is_inline "$segment"; then
+      gaudi::set_inline_async_segment "$segment" && prompt+="$GAUDI_THEME_REPLY"
+      continue
+    fi
+
     gaudi::set_async_segment_cache_file "$segment"
     gaudi::set_file_content "$GAUDI_THEME_REPLY" || continue
     prompt+="$GAUDI_THEME_REPLY"
@@ -355,8 +411,10 @@ gaudi::current_generation () {
   printf "%s" "${current_generation:-0}"
 }
 
+# Reads the generation file with builtins only. Overwrites GAUDI_THEME_REPLY.
 gaudi::generation_matches () {
-  [[ "$(gaudi::current_generation)" == "$1" ]]
+  gaudi::set_file_content "$GAUDI_THEME_GENERATION_FILE" || GAUDI_THEME_REPLY="0"
+  [[ "${GAUDI_THEME_REPLY:-0}" == "$1" ]]
 }
 
 # Start a new prompt generation: bump the counter and publish it for workers.
@@ -374,29 +432,26 @@ gaudi::store_prompt_state () {
   GAUDI_THEME_PROMPT_ROWS="$3"
 }
 
+# Cursor movement uses the standard VT100/ANSI sequences (what `tput sc`, `rc`,
+# `cuu` and `el` print on every terminal the theme supports) instead of forking
+# `tput` several times per redraw.
 gaudi::cursor_save () {
-  tput sc 2>/dev/null || printf "\0337"
+  printf "\0337"
 }
 
 gaudi::cursor_restore () {
-  tput rc 2>/dev/null || printf "\0338"
+  printf "\0338"
 }
 
 gaudi::cursor_up () {
   local rows="$1"
-  local sequence=""
 
   [[ "$rows" =~ ^[0-9]+$ && "$rows" -gt 0 ]] || return 1
-  sequence="$(tput cuu "$rows" 2>/dev/null)" && {
-    printf "%s" "$sequence"
-    return
-  }
-
   printf "\033[%sA" "$rows"
 }
 
 gaudi::clear_to_eol () {
-  tput el 2>/dev/null || printf "\033[K"
+  printf "\033[K"
 }
 
 gaudi::redraw_prompt_layout () {
@@ -448,7 +503,10 @@ gaudi::refresh_async_segment () {
 
   gaudi::set_async_segment_cache_file "$segment"
   cache_file="$GAUDI_THEME_REPLY"
-  fresh_output="$(gaudi::render_segment "$segment")"
+  # Nothing a segment prints on stderr may reach the terminal from the
+  # background: not a tool's warning, and not the "Broken pipe" of a segment
+  # whose worker was cancelled while it was running.
+  fresh_output="$(gaudi::render_segment "$segment" 2> /dev/null)"
 
   gaudi::generation_matches "$generation" || return 0
 
@@ -472,22 +530,77 @@ gaudi::refresh_async_segment () {
   gaudi::redraw_prompt
 }
 
+# Called by the worker when it starts: publish its process id so the next
+# prompt of the same shell can cancel it, and clean up after itself when it
+# exits, whether it finished or was cancelled.
+gaudi::register_async_worker () {
+  [[ -d "$GAUDI_THEME_STATE_DIR" ]] || return 0
+
+  printf "%s" "$$" 2> /dev/null > "$GAUDI_THEME_WORKER_FILE"
+  trap 'gaudi::release_async_worker' EXIT
+}
+
+gaudi::release_async_worker () {
+  [[ -n "${GAUDI_THEME_PENDING_FILE:-}" ]] && rm -f "$GAUDI_THEME_PENDING_FILE"
+
+  # Leave the file alone if a newer worker has already taken it over.
+  if gaudi::set_file_content "$GAUDI_THEME_WORKER_FILE" && [[ "$GAUDI_THEME_REPLY" == "$$" ]]; then
+    rm -f "$GAUDI_THEME_WORKER_FILE"
+  fi
+}
+
+# Stop the worker started by the previous prompt of this shell, if it is still
+# running: its results belong to an older prompt and would be thrown away by
+# the generation guard anyway. Costs one `stat` when no worker is running, and
+# never forks.
+gaudi::cancel_async_worker () {
+  local worker_pid=""
+
+  [[ -s "$GAUDI_THEME_WORKER_FILE" ]] || return 0
+
+  gaudi::set_file_content "$GAUDI_THEME_WORKER_FILE"
+  worker_pid="$GAUDI_THEME_REPLY"
+  : 2> /dev/null > "$GAUDI_THEME_WORKER_FILE"
+
+  [[ "$worker_pid" =~ ^[0-9]+$ && "$worker_pid" -gt 1 && "$worker_pid" != "$$" ]] || return 0
+  kill "$worker_pid" 2> /dev/null
+
+  return 0
+}
+
+# Start the worker. The worker replaces the background subshell it is started
+# from (see gaudi::launch_async_segment_jobs): no wrapper shell is left behind
+# to report "Terminated" when the worker is cancelled, and the exports below
+# never reach the interactive shell. Called outside a subshell, it makes one.
 gaudi::run_async_segment_worker () {
-  GAUDI_THEME_SHELL_ID="$GAUDI_THEME_SHELL_ID" \
-    GAUDI_BASH="$GAUDI_BASH" \
-    GAUDI_THEME_WORKDIR="$PWD" \
-    GAUDI_THEME_LEFT_PROMPT="${GAUDI_THEME_LEFT_PROMPT:-}" \
-    GAUDI_THEME_RIGHT_PROMPT="${GAUDI_THEME_RIGHT_PROMPT:-}" \
-    GAUDI_THEME_PROMPT_ROWS="${GAUDI_THEME_PROMPT_ROWS:-2}" \
-    GAUDI_SPLIT_PROMPT="$GAUDI_SPLIT_PROMPT" \
-    GAUDI_SPLIT_PROMPT_TWO_LINES="$GAUDI_SPLIT_PROMPT_TWO_LINES" \
-    bash "$GAUDI_ROOT/lib/async_segment_worker.bash" "$@"
+  local -a inline_vars=()
+
+  if [[ "${BASH_SUBSHELL:-0}" -eq 0 ]]; then
+    (gaudi::run_async_segment_worker "$@")
+    return
+  fi
+
+  # Hand the inline segments rendered for this prompt, and the terminal width,
+  # to the worker.
+  inline_vars=("${!GAUDI_THEME_INLINE_@}")
+  [[ ${#inline_vars[@]} -gt 0 ]] && export "${inline_vars[@]}"
+  [[ "${COLUMNS:-}" =~ ^[0-9]+$ ]] && export COLUMNS
+
+  export GAUDI_ROOT GAUDI_THEME_SHELL_ID GAUDI_SPLIT_PROMPT GAUDI_SPLIT_PROMPT_TWO_LINES
+  export GAUDI_BASH="${GAUDI_BASH:-}"
+  export GAUDI_THEME_WORKDIR="$PWD"
+  export GAUDI_THEME_LEFT_PROMPT="${GAUDI_THEME_LEFT_PROMPT:-}"
+  export GAUDI_THEME_RIGHT_PROMPT="${GAUDI_THEME_RIGHT_PROMPT:-}"
+  export GAUDI_THEME_PROMPT_ROWS="${GAUDI_THEME_PROMPT_ROWS:-2}"
+
+  exec bash "$GAUDI_ROOT/lib/async_segment_worker.bash" "$@"
 }
 
 gaudi::launch_async_segment_jobs () {
   local generation="$1"
   declare -a segments=("${!2}")
 
+  gaudi::cancel_async_worker
   [[ ${#segments[@]} -gt 0 ]] || return 0
 
   if [[ $- == *i* ]]; then

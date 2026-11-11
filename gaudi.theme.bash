@@ -1,7 +1,17 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC1091,SC2034
 
-GAUDI_ROOT="${GAUDI_BASH}/components/themes/gaudi"
+# The theme lives wherever this file is sourced from; the framework's default
+# location is the fallback.
+if [[ "${BASH_SOURCE[0]:-}" == */* ]]; then
+  GAUDI_ROOT="${BASH_SOURCE[0]%/*}"
+  [[ -n "$GAUDI_ROOT" ]] || GAUDI_ROOT="/"
+else
+  GAUDI_ROOT="."
+fi
+# Absolute, so it stays valid after `cd` and for the async worker.
+[[ "$GAUDI_ROOT" == /* ]] || GAUDI_ROOT="${PWD}/${GAUDI_ROOT}"
+[[ -f "$GAUDI_ROOT/gaudi.configs.bash" ]] || GAUDI_ROOT="${GAUDI_BASH}/components/themes/gaudi"
 
 # Do not load if not an interactive shell.
 # Reference: https://github.com/nojhan/liquidprompt/issues/161
@@ -33,14 +43,14 @@ gaudi::register_prompt_hook () {
 # read by bash as the prompt escapes \u and \t) and its colours are wrapped in
 # \[ \] so readline does not count them as visible characters.
 gaudi::set_continuation_prompt () {
-  local color="${GAUDI_CHAR_COLOR:-}"
+  local color="${GAUDI_CONTINUATION_COLOR:-}"
   local reset="${NC:-}"
   local body=""
 
   body="$(gaudi_continuation)"
   body="${body#"$color"}"
   body="${body%"$reset"}"
-  printf -v body "%b" "$body"
+  [[ -n "$body" ]] && printf -v body "%b" "$body"
 
   gaudi::set_prompt_escaped "$body"
   body="$GAUDI_THEME_REPLY"
@@ -53,7 +63,10 @@ gaudi::set_continuation_prompt () {
 
 gaudi::init () {
   gaudi::ensure_async_dirs
+  # `continuation` goes first: it falls back to GAUDI_CHAR_* values set by the
+  # user, and must read them before `char` fills in its own defaults.
   gaudi::load_segment continuation
+  gaudi::load_segment char
 
   gaudi::set_continuation_prompt
   PS4='$0.$LINENO+ '
@@ -96,7 +109,15 @@ gaudi::prompt () {
   # escaped: bash must print it, never expand it. Only the last line is edited
   # by readline, so that is where non-printing colours need their \[ \] guards.
   gaudi::set_prompt_escaped "$prompt_layout"
-  PS1=$'\n'"${GAUDI_THEME_REPLY}"$'\n\n'"\[${GAUDI_GREEN}\]>>\[${NC}\] "
+  prompt_layout="$GAUDI_THEME_REPLY"
+
+  # The prompt character is drawn from the exit status of the last command.
+  if gaudi::defined gaudi::segment_char; then
+    gaudi::segment_char "$RETVAL"
+  else
+    GAUDI_THEME_REPLY="\[${GAUDI_GREEN}\]>>\[${NC}\] "
+  fi
+  PS1=$'\n'"${prompt_layout}"$'\n\n'"${GAUDI_THEME_REPLY}"
 
   gaudi::launch_async_segment_jobs "$GAUDI_THEME_GENERATION" GAUDI_PROMPT_ASYNC[@]
 }

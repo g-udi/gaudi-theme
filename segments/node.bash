@@ -28,9 +28,7 @@ gaudi_node () {
   [[ $GAUDI_NODE_SHOW == false ]] && return
 
   # Show NODE status only for JS-specific folders
-  [[ -f package.json || -d node_modules ||
-     -n $(find . -not -path '*/\.*' -maxdepth 1 -name "*.js")
-  ]] || return
+  [[ -f package.json || -d node_modules ]] || gaudi::has_files '*.js' || return
 
   local 'node_version'
 
