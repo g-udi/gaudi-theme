@@ -37,7 +37,11 @@ battstat () {
     }
 
     get_linux_details () {
-        battery_details=$(LC_ALL=en_US.UTF-8 upower -i "$(upower -e | grep 'BAT')")
+        # upower is not installed everywhere (containers, minimal servers)
+        battery_details=""
+        if command -v upower > /dev/null 2>&1; then
+            battery_details=$(LC_ALL=en_US.UTF-8 upower -i "$(upower -e | grep 'BAT')")
+        fi
 
         # Exit if no batery exists.
         if [[ -z "$battery_details" ]]; then
