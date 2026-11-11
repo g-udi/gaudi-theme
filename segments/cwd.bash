@@ -49,6 +49,9 @@ gaudi_cwd () {
   }
 
   [[ $GAUDI_CWD_SHORTEN == true ]] && GAUDI_CWD=$(gaudi_reduce_path "$PWD") || GAUDI_CWD=$(pwd | sed "s|^${HOME}|~|")
+  # The section is printed with `printf %b` later on: double the backslashes of
+  # the path so a directory name is never read as an escape sequence.
+  GAUDI_CWD="${GAUDI_CWD//\\/\\\\}"
   # shellcheck disable=SC2012
   [[ $GAUDI_CWD_SUMMARY == true ]] && GAUDI_CWD+=" [$(ls -1 | wc -l | sed 's: ::g') Files, $(ls -lah | grep -m 1 total | sed 's/total //')]"
 

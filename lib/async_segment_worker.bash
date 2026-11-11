@@ -19,7 +19,9 @@ source "$GAUDI_ROOT/lib/async.bash" > /dev/null 2>&1 || exit 1
 # shellcheck disable=SC2034
 GAUDI_PROMPT_ASYNC=("$@")
 
-gaudi::ensure_async_dirs
+# Only the shared cache directory: the state directory belongs to the parent
+# shell, which removes it on exit.
+gaudi::ensure_async_cache_dir
 
 for segment in "$@"; do
   gaudi::refresh_async_segment "$segment" "$generation"

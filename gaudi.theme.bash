@@ -28,12 +28,37 @@ gaudi::register_prompt_hook () {
   fi
 }
 
+# Build PS2 from the continuation segment: its text is rendered once with
+# `printf %b` (so "" and "\t" become the glyph and a tab instead of being
+# read by bash as the prompt escapes \u and \t) and its colours are wrapped in
+# \[ \] so readline does not count them as visible characters.
+gaudi::set_continuation_prompt () {
+  local color="${GAUDI_CHAR_COLOR:-}"
+  local reset="${NC:-}"
+  local body=""
+
+  body="$(gaudi_continuation)"
+  body="${body#"$color"}"
+  body="${body%"$reset"}"
+  printf -v body "%b" "$body"
+
+  gaudi::set_prompt_escaped "$body"
+  body="$GAUDI_THEME_REPLY"
+
+  [[ -n "$color" && "$color" != *'\['* ]] && color="\[${color}\]"
+  [[ -n "$reset" ]] && reset="\[${reset}\]"
+
+  PS2="${color}${body}${reset}"
+}
+
 gaudi::init () {
   gaudi::ensure_async_dirs
   gaudi::load_segment continuation
 
-  PS2="$(gaudi_continuation)"
+  gaudi::set_continuation_prompt
   PS4='$0.$LINENO+ '
+
+  [[ $- == *i* ]] && gaudi::register_exit_cleanup
 
   gaudi::register_prompt_hook
 }
@@ -44,32 +69,36 @@ gaudi::prompt () {
   # will be overridden by a different command execution - do not move this line!
   RETVAL=$?
 
-  local generation=""
-  local prompt_char=""
   local left_prompt=""
   local right_prompt=""
   local async_prompt=""
   local prompt_layout=""
   local prompt_rows=""
 
-  prompt_char="${GAUDI_GREEN}>>${NC} "
-
   gaudi::ensure_async_dirs
-  generation="$(gaudi::next_generation)" || return 1
+  gaudi::advance_generation || return 1
 
-  left_prompt="$(gaudi::render_prompt GAUDI_PROMPT_LEFT[@])"
-  right_prompt="$(gaudi::render_prompt GAUDI_PROMPT_RIGHT[@])"
+  gaudi::set_rendered_prompt GAUDI_PROMPT_LEFT[@]
+  left_prompt="$GAUDI_THEME_REPLY"
+  gaudi::set_rendered_prompt GAUDI_PROMPT_RIGHT[@]
+  right_prompt="$GAUDI_THEME_REPLY"
 
   gaudi::prime_global_async_segments GAUDI_PROMPT_ASYNC[@]
-  async_prompt="$(gaudi::render_cached_async_prompt GAUDI_PROMPT_ASYNC[@])"
-  prompt_layout="$(gaudi::render_prompt_layout "$left_prompt" "$right_prompt" "$async_prompt")"
-  prompt_rows="$(gaudi::prompt_cursor_rows "$right_prompt")"
+  gaudi::set_cached_async_prompt GAUDI_PROMPT_ASYNC[@]
+  async_prompt="$GAUDI_THEME_REPLY"
+  gaudi::set_prompt_layout "$left_prompt" "$right_prompt" "$async_prompt"
+  prompt_layout="$GAUDI_THEME_REPLY"
+  gaudi::set_prompt_cursor_rows "$right_prompt"
+  prompt_rows="$GAUDI_THEME_REPLY"
   gaudi::store_prompt_state "$left_prompt" "$right_prompt" "$prompt_rows"
 
-  PS1=$(printf "\n%b\n\n%b" "$prompt_layout" "$prompt_char")
+  # The layout holds segment content (directory and branch names), so it is
+  # escaped: bash must print it, never expand it. Only the last line is edited
+  # by readline, so that is where non-printing colours need their \[ \] guards.
+  gaudi::set_prompt_escaped "$prompt_layout"
+  PS1=$'\n'"${GAUDI_THEME_REPLY}"$'\n\n'"\[${GAUDI_GREEN}\]>>\[${NC}\] "
 
-  set +m
-  gaudi::launch_async_segment_jobs "$generation" GAUDI_PROMPT_ASYNC[@]
+  gaudi::launch_async_segment_jobs "$GAUDI_THEME_GENERATION" GAUDI_PROMPT_ASYNC[@]
 }
 
 gaudi::init
