@@ -24,14 +24,14 @@ gaudi_pyenv () {
   [[ $GAUDI_PYENV_SHOW == false ]] && return
 
   # Show pyenv python version only for Python-specific folders
-  [[ -f requirements.txt ]] || [[ -f Pipfile ]] || [[ -f pyproject.toml ]] || [[ -n $(find . -not -path '*/\.*' -maxdepth 1 -name "*.py") ]] || return
+  [[ -f requirements.txt ]] || [[ -f Pipfile ]] || [[ -f pyproject.toml ]] || gaudi::has_files '*.py' || return
 
   local 'pyenv_version'
 
   if gaudi::exists pyenv; then
     pyenv_version=$(pyenv version-name 2>/dev/null)
   elif gaudi::exists virtualenv; then
-    pyenv_version=$(basename "$VIRTUAL_ENV")
+    pyenv_version="${VIRTUAL_ENV##*/}"
   elif gaudi::exists python; then
     pyenv_version=$(python -V 2>&1 | grep --color=never -oe "^Python\s*[0-9.]\+" | awk '{print $2}')
   else

@@ -16,35 +16,44 @@ gaudi::defined () {
   type -t "$1" &> /dev/null
 }
 
+# Check whether the current directory holds at least one entry matching any of
+# the given glob patterns. Hidden entries only match patterns that start with a
+# dot. Uses the `compgen` builtin, so nothing is forked.
+# USAGE:
+#   gaudi::has_files <glob> [glob...]
+gaudi::has_files () {
+  local pattern=""
+
+  for pattern in "$@"; do
+    compgen -G "$pattern" > /dev/null 2>&1 && return 0
+  done
+
+  return 1
+}
+
+# Build a prompt section and leave it in GAUDI_THEME_REPLY (nothing is printed
+# and nothing is forked). The pieces are, in order: the colouring
+# (<font_color><background_color>), the prefix, the symbol (the icon shown
+# before the content), the content, the suffix and a colour reset.
+# USAGE:
+#   gaudi::set_section <color> [prefix] [symbol] <content> [suffix]
+gaudi::set_section () {
+  local color="${1:-}" prefix="${2:-}" symbol="${3:-}" content="${4:-}" suffix="${5:-}"
+
+  if [[ $GAUDI_ENABLE_SYMBOLS == false ]]; then
+    symbol="$GAUDI_SYMBOL_ALT"
+  fi
+  [[ -n $symbol ]] && symbol="$symbol "
+
+  GAUDI_THEME_REPLY="${color}${prefix}${symbol}${content}${suffix}${NC}"
+}
+
 # Draw prompt section
 # USAGE:
 #   gaudi::section <color> [prefix] [symbol] <content> [suffix]
 gaudi::section () {
-
-    local color prefix symbol content suffix
-
-    [[ -n $1 ]] && color="$1"    || color=""
-    [[ -n $2 ]] && prefix="$2"   || prefix=""
-    [[ -n $3 ]] && symbol="$3"   || symbol=""
-    [[ -n $4 ]] && content="$4"  || content=""
-    [[ -n $5 ]] && suffix="$5"   || suffix=""
-
-    # gaudi::escape "$color$prefix$symbol $content$suffix${NC}"
-    # printf "%b%b%b %b%b%b" "$color" "$prefix" "$symbol" "$content" "$suffix" "${NC}"
-
-    if [[ $GAUDI_ENABLE_SYMBOLS == false ]]; then
-      symbol="$GAUDI_SYMBOL_ALT"
-    fi
-    [[ -n $symbol ]] && symbol="$symbol "
-    # Why are wrapping the cariables with "" you say ?
-    # To pass a whole string containing GAUDI_WHITEspaces as a single argument, enclose it in double quotes
-    # Like every other program, echo or printf interprets strings separated by GAUDI_WHITEspace as different arguments
-    echo -n "$color"    # Print out any coloring needed for the section with order of <font_color><background_color>
-    echo -n "$prefix"   # Print the prefix before the content .. default prefix is a space
-    echo -n "$symbol"   # Print the symbol if exists which is the icon to show before the segment
-    echo -n "$content"  # Print the actual content to display in the prompt
-    echo -n "$suffix"   # Print the suffix before the content .. default prefix is a space
-    echo -n "$NC"       # Reset the coloring set in the $color
+  gaudi::set_section "$@"
+  printf '%s' "$GAUDI_THEME_REPLY"
 }
 
 # Load a segment definition once per shell session.
@@ -116,7 +125,9 @@ gaudi::set_now () {
 
 # Same as gaudi::render_prompt, but runs in the current shell and leaves the
 # result in GAUDI_THEME_REPLY: segment files are sourced once per session and
-# each segment costs a single subshell.
+# each segment costs a single subshell, or none at all when the segment also
+# defines `gaudi::segment_<name>` (a function that leaves its output in
+# GAUDI_THEME_REPLY instead of printing it).
 # USAGE:
 #   gaudi::set_rendered_prompt segments <array>
 gaudi::set_rendered_prompt () {
@@ -148,7 +159,13 @@ gaudi::set_rendered_prompt () {
     fi
 
     local GAUDI_SYMBOL_ALT="$_segment"
-    _info="$("gaudi_${_segment}")"
+    if gaudi::defined "gaudi::segment_${_segment}"; then
+      GAUDI_THEME_REPLY=""
+      "gaudi::segment_${_segment}"
+      _info="$GAUDI_THEME_REPLY"
+    else
+      _info="$("gaudi_${_segment}")"
+    fi
     _prompt+="$_info"
 
     if [[ "$_now" =~ ^[0-9]+$ ]]; then

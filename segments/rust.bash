@@ -15,7 +15,7 @@ GAUDI_RUST_SHOW_TOOLCHAIN="${GAUDI_RUST_SHOW_TOOLCHAIN=false}"
 GAUDI_RUST_PREFIX="${GAUDI_RUST_PREFIX="$GAUDI_PROMPT_DEFAULT_PREFIX"}"
 GAUDI_RUST_SUFFIX="${GAUDI_RUST_SUFFIX="$GAUDI_PROMPT_DEFAULT_SUFFIX"}"
 GAUDI_RUST_SYMBOL="${GAUDI_RUST_SYMBOL="\\ue68b"}"
-GAUDI_RUST_COLOR="${GAUDI_RUST_COLOR=$(tput setaf 075)}"
+GAUDI_RUST_COLOR="${GAUDI_RUST_COLOR=$'\e[38;5;61m'}"
 
 # ------------------------------------------------------------------------------
 # Section
@@ -26,7 +26,7 @@ gaudi_rust () {
   [[ $GAUDI_RUST_SHOW == false ]] && return
 
   # If there are Rust-specific files in current directory
-  [[ -f Cargo.toml || -n $(find . -not -path '*/\.*' -maxdepth 1 -name "*.rs") ]] || return
+  [[ -f Cargo.toml ]] || gaudi::has_files '*.rs' || return
 
   gaudi::exists rustc || return
 

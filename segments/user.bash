@@ -26,7 +26,9 @@ GAUDI_USER_COLOR_ROOT="${GAUDI_USER_COLOR_ROOT="$GAUDI_WHITE$BACKGROUND_GAUDI_RE
 # Section
 # ------------------------------------------------------------------------------
 
-gaudi_user () {
+# Leaves the section in GAUDI_THEME_REPLY.
+gaudi::segment_user () {
+  GAUDI_THEME_REPLY=""
   [[ $GAUDI_USER_SHOW == false ]] && return
 
   if [[ $GAUDI_USER_SHOW == 'always' ]] \
@@ -34,7 +36,7 @@ gaudi_user () {
   || [[ $UID == 0 ]] \
   || [[ $GAUDI_USER_SHOW == true && -n $SSH_CONNECTION ]]
   then
-    local user_color user_symbol
+    local user_color="" user_symbol=""
 
     if [[ $USER == 'root' ]]; then
       user_color=$GAUDI_USER_COLOR_ROOT
@@ -43,11 +45,16 @@ gaudi_user () {
       user_color="$GAUDI_USER_COLOR"
     fi
 
-    gaudi::section \
+    gaudi::set_section \
       "$user_color" \
       "$GAUDI_USER_PREFIX" \
       "$user_symbol" \
       "$USER" \
       "$GAUDI_USER_SUFFIX"
   fi
+}
+
+gaudi_user () {
+  gaudi::segment_user
+  printf '%s' "$GAUDI_THEME_REPLY"
 }

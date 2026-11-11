@@ -50,9 +50,8 @@ gaudi_docker () {
   fi
 
   # Show Docker status only for Docker-specific folders
-  [[ "$compose_exists" == true || -f Dockerfile || -f docker-compose.yml || -f /.dockerenv ||
-    -n $(find . -not -path '*/\.*' -maxdepth 1 -name "*.Dockerfile")
-  ]] || return
+  [[ "$compose_exists" == true || -f Dockerfile || -f docker-compose.yml || -f /.dockerenv ]] ||
+    gaudi::has_files '*.Dockerfile' || return
 
   # if docker daemon isn't running you'll get an error saying it can't connect
   docker_version=$(docker version -f "{{.Server.Version}}" 2>/dev/null | cut -f1 -d"-")

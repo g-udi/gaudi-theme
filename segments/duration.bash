@@ -21,22 +21,28 @@ GAUDI_DURATION_MIN_SECONDS="${GAUDI_DURATION_MIN_SECONDS=1}"
 # Section
 # ------------------------------------------------------------------------------
 
-gaudi_duration() {
+# Leaves the section in GAUDI_THEME_REPLY. Runs in the current shell, so the
+# only fork left is the call to _command_duration itself.
+gaudi::segment_duration() {
+	local duration_str=""
 
+	GAUDI_THEME_REPLY=""
 	[[ $GAUDI_DURATION_SHOW == false ]] && return
-	gaudi::defined _command_duration || return
+	gaudi::defined _command_duration || return 0
 
-	export COMMAND_DURATION_MIN_SECONDS="$GAUDI_DURATION_MIN_SECONDS"
-
-	local duration_str
-	duration_str="$(_command_duration)"
+	duration_str="$(COMMAND_DURATION_MIN_SECONDS="$GAUDI_DURATION_MIN_SECONDS" _command_duration)"
 
 	[[ -z "$duration_str" ]] && return
 
-	gaudi::section \
+	gaudi::set_section \
 		"$GAUDI_DURATION_COLOR" \
 		"$GAUDI_DURATION_PREFIX" \
 		"$GAUDI_DURATION_SYMBOL" \
 		"$duration_str" \
 		"$GAUDI_DURATION_SUFFIX"
+}
+
+gaudi_duration() {
+	gaudi::segment_duration
+	printf '%s' "$GAUDI_THEME_REPLY"
 }

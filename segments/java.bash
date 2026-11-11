@@ -25,10 +25,8 @@ gaudi_java () {
 
 
 	# Show only if .java or .jar exist in current directory
-  [[ -f pom.xml || -f build.gradle || -f build.gradle.kts || -f settings.gradle ||
-	   -n $(find . -not -path '*/\.*' -maxdepth 1 -name "*.java") ||
-	   -n $(find . -not -path '*/\.*' -maxdepth 1 -name "*.jar")
- ]] || return
+  [[ -f pom.xml || -f build.gradle || -f build.gradle.kts || -f settings.gradle ]] ||
+    gaudi::has_files '*.java' '*.jar' || return
 
 	if gaudi::exists java; then
 			_java=java

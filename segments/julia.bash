@@ -24,7 +24,7 @@ gaudi_julia () {
   [[ $GAUDI_JULIA_SHOW == false ]] && return
 
   # If there are julia files in current directory
-  [[ -n $(find . -not -path '*/\.*' -maxdepth 1 -name "*.jl") ]] || return
+  gaudi::has_files '*.jl' || return
 
   gaudi::exists julia || return
 

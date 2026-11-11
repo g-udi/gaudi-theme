@@ -24,7 +24,7 @@ gaudi_php () {
   [[ $GAUDI_PHP_SHOW == false ]] && return
 
   # Show only if php files or composer.json exist in current directory
-  [[ -n $(find . -not -path '*/\.*' -maxdepth 1 -name "*.php") || -f composer.json ]] || return
+  [[ -f composer.json ]] || gaudi::has_files '*.php' || return
 
   gaudi::exists php || return
 
