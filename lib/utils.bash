@@ -92,6 +92,74 @@ gaudi::render_prompt () {
   fi;
 }
 
+# How long (seconds) the output of a synchronous segment may be reused. Only
+# segments that shell out to slow system tools and change rarely are cached;
+# everything else is rendered on every prompt (TTL 0). The result is left in
+# GAUDI_THEME_REPLY.
+# USAGE:
+#   gaudi::sync_segment_ttl <segment>
+gaudi::sync_segment_ttl () {
+  case "$1" in
+    multiplexer|battery) GAUDI_THEME_REPLY="${GAUDI_THEME_SYNC_SEGMENT_TTL:-30}" ;;
+    *) GAUDI_THEME_REPLY="0" ;;
+  esac
+}
+
+# Current time in whole seconds, without forking.
+gaudi::set_now () {
+  if [[ ${BASH_VERSINFO[0]} -gt 4 || ( ${BASH_VERSINFO[0]} -eq 4 && ${BASH_VERSINFO[1]} -ge 2 ) ]]; then
+    printf -v GAUDI_THEME_REPLY '%(%s)T' -1
+  else
+    GAUDI_THEME_REPLY="${SECONDS:-}"
+  fi
+}
+
+# Same as gaudi::render_prompt, but runs in the current shell and leaves the
+# result in GAUDI_THEME_REPLY: segment files are sourced once per session and
+# each segment costs a single subshell.
+# USAGE:
+#   gaudi::set_rendered_prompt segments <array>
+gaudi::set_rendered_prompt () {
+  local _prompt="" _segment="" _info="" _key="" _ttl="" _now="" _at_var="" _out_var=""
+  declare -a _segments=("${!1}")
+
+  for _segment in "${_segments[@]}"; do
+    gaudi::load_segment "$_segment" || continue
+    gaudi::defined "gaudi_${_segment}" || continue
+
+    gaudi::sync_segment_ttl "$_segment"
+    _ttl="$GAUDI_THEME_REPLY"
+    _now=""
+
+    if [[ "$_ttl" =~ ^[0-9]+$ && "$_ttl" -gt 0 ]]; then
+      gaudi::set_now
+      _now="$GAUDI_THEME_REPLY"
+    fi
+
+    if [[ "$_now" =~ ^[0-9]+$ ]]; then
+      _key="${_segment//[^a-zA-Z0-9_]/_}"
+      _at_var="GAUDI_THEME_SYNC_CACHED_AT_${_key}"
+      _out_var="GAUDI_THEME_SYNC_CACHED_${_key}"
+
+      if [[ -n "${!_at_var:-}" && "$_now" -ge "${!_at_var}" && $((_now - ${!_at_var})) -lt "$_ttl" ]]; then
+        _prompt+="${!_out_var:-}"
+        continue
+      fi
+    fi
+
+    local GAUDI_SYMBOL_ALT="$_segment"
+    _info="$("gaudi_${_segment}")"
+    _prompt+="$_info"
+
+    if [[ "$_now" =~ ^[0-9]+$ ]]; then
+      printf -v "$_at_var" '%s' "$_now"
+      printf -v "$_out_var" '%s' "$_info"
+    fi
+  done
+
+  GAUDI_THEME_REPLY="$_prompt"
+}
+
 # Check usage of bash-preexec
 # USAGE:
 #   gaudi::check_precmd_conflict <command>
