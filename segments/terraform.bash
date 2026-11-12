@@ -25,10 +25,16 @@ gaudi_terraform () {
   [[ "$GAUDI_TERRAFORM_SHOW" == false ]] && return
 
   # Only show in directories with Terraform files
-  local _tf_files=(*.tf)
-  [[ -d .terraform || -f main.tf || -f terraform.tfvars ||
-     -e "${_tf_files[0]}"
-  ]] || return
+  # (the *.tf files are walked by value: the first index of an array is 0 in
+  # bash and 1 in zsh)
+  local _tf_file="" _tf_found=""
+  for _tf_file in *.tf; do
+    if [[ -e "$_tf_file" ]]; then
+      _tf_found=true
+      break
+    fi
+  done
+  [[ -d .terraform || -f main.tf || -f terraform.tfvars || -n "$_tf_found" ]] || return
 
   gaudi::exists terraform || return
 

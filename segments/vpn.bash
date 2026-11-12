@@ -2,14 +2,15 @@
 #
 # VPN
 # Show if the connection is made through a VPN
-# Currently supports VPN Unlimited
+# Detects an IPsec tunnel (the ipsec0 interface) on macOS and a tun0 interface
+# on Linux
 
 # ------------------------------------------------------------------------------
 # Configuration
 # ------------------------------------------------------------------------------
 
 GAUDI_VPN_SHOW="${GAUDI_VPN_SHOW=true}"
-GAUDI_VPN_SYMBOL="\\uf98c"
+GAUDI_VPN_SYMBOL="${GAUDI_VPN_SYMBOL="\\uf98c"}"
 GAUDI_VPN_PREFIX="${GAUDI_VPN_PREFIX="$GAUDI_PROMPT_DEFAULT_PREFIX"}"
 GAUDI_VPN_SUFFIX="${GAUDI_VPN_SUFFIX="$GAUDI_PROMPT_DEFAULT_SUFFIX"}"
 GAUDI_VPN_COLOR="${GAUDI_VPN_COLOR="$GAUDI_WHITE$BACKGROUND_GAUDI_ORANGE"}"

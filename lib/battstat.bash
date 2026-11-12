@@ -1,32 +1,39 @@
 #!/usr/bin/env bash
 
 # Usage: battstat [options] format
-# CGAUDI_REDit: https://github.com/imwally/battstat
+# Credit: https://github.com/imwally/battstat
 #
-# options:
-#     -h, --help                display help information
+# options (give them before the format tokens):
 #     -c, --charging-icon       string to display in icon's place when battery is charging
 #     -d, --discharging-icon    string to display in icon's place when battery is discharging
+#     -t, --threshold <n>       charge (percent) below which the colour turns red (default 10)
+#     --hide-above <n>          print nothing unless the charge is below <n> percent
+#                               or the battery is fully charged
 #     --percent-when-charged    only display percent when charged
 
 # format:
+#     {b}    switch to the colour of the charge level
 #     {i}    display icon
 #     {t}    display time remaining
 #     {p}    display percent
 # Note: There must be a space between each format token
+#
+# Prints nothing, and returns 0, on a machine without a battery.
 
 battstat () {
 
-    exit_no_battery () {
-        return
-    }
+    local battery_details="" charged="" charging="" discharging="" time="" percent=""
+    local hours="" minutes="" full_minutes="" icon="" battery_percent=""
+    local charging_icon="" discharging_icon="" threshold=10
+
+    # Each get_*_details function returns 1 when there is no battery.
 
     get_darwin_details () {
-        battery_details=$(pmset -g batt)
+        battery_details=$(pmset -g batt 2> /dev/null)
 
-        # Exit if no battery exists.
+        # No battery (desktop Macs).
         if ! echo "$battery_details" | grep -q InternalBattery; then
-            exit_no_battery
+            return 1
         fi
 
         charged=$(echo "$battery_details" | grep -w 'charged')
@@ -40,12 +47,15 @@ battstat () {
         # upower is not installed everywhere (containers, minimal servers)
         battery_details=""
         if command -v upower > /dev/null 2>&1; then
-            battery_details=$(LC_ALL=en_US.UTF-8 upower -i "$(upower -e | grep 'BAT')")
+            battery_details=$(upower -e 2> /dev/null | grep 'BAT' | head -n 1)
+            if [[ -n "$battery_details" ]]; then
+                battery_details=$(LC_ALL=en_US.UTF-8 upower -i "$battery_details" 2> /dev/null)
+            fi
         fi
 
-        # Exit if no batery exists.
+        # No battery, or no upower to ask.
         if [[ -z "$battery_details" ]]; then
-            exit_no_battery
+            return 1
         fi
 
         charged=$(echo "$battery_details" | grep 'state' | grep -w 'fully-charged')
@@ -78,11 +88,11 @@ battstat () {
     }
 
     get_openbsd_details () {
-        battery_details=$(apm)
+        battery_details=$(apm 2> /dev/null)
 
-        # Exit if no battery exists.
+        # No battery.
         if [[ -z "$battery_details" ]]; then
-        exit_no_battery
+            return 1
         fi
 
         charging=$(echo $battery_details | grep -w 'state: connected')
@@ -90,7 +100,7 @@ battstat () {
         percent=$(echo $battery_details | grep -o '[0-9]*%')
         full_minutes=$(echo $battery_details | grep -o ' [0-9]* ')
 
-        # Battery is consideGAUDI_RED charged when AC is connected and 100%
+        # Battery is considered charged when AC is connected and 100%
         if [[ ! -z "$charging" ]] && [[ $percent = "100%" ]]; then
             charged="charged"
         fi
@@ -148,7 +158,7 @@ battstat () {
         # Change color based on battery percentage
         if [[ $battery_percent == 100 || ! -z "$charged" ]]; then
             echo -e -n "$GAUDI_GREEN"
-        elif [[ $battery_percent -lt $threshold ]]; then
+        elif [[ "$battery_percent" =~ ^[0-9]+$ && $battery_percent -lt $threshold ]]; then
             echo -e -n "$GAUDI_RED"
         else
             echo -e -n "$GAUDI_YELLOW"
@@ -163,17 +173,16 @@ battstat () {
 
     case $(uname) in
         "Darwin")
-        get_darwin_details
+        get_darwin_details || return 0
         ;;
         "Linux")
-        get_linux_details
+        get_linux_details || return 0
         ;;
         "OpenBSD")
-        get_openbsd_details
+        get_openbsd_details || return 0
         ;;
         *)
-        echo "N/A"
-        return
+        return 0
         ;;
     esac
 
@@ -205,6 +214,14 @@ battstat () {
             shift
             shift
             ;;
+        --hide-above)
+            battery_percent="$(echo $percent | tr -d '%[,;]')"
+            if [[ -z "$charged" && "$battery_percent" =~ ^[0-9]+$ && "$2" =~ ^[0-9]+$ && $battery_percent -ge $2 ]]; then
+                return 0
+            fi
+            shift
+            shift
+            ;;
         '{b}')
             print_background
             shift
@@ -222,8 +239,8 @@ battstat () {
             shift
             ;;
         *)
-            print_help
-            break
+            echo "battstat: unknown argument: $1" >&2
+            return 1
             ;;
         esac
     done

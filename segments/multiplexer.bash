@@ -14,21 +14,21 @@
 GAUDI_MULTIPLEXER_SHOW="${GAUDI_MULTIPLEXER_SHOW=true}"
 GAUDI_MULTIPLEXER_PREFIX="${GAUDI_MULTIPLEXER_PREFIX="$GAUDI_PROMPT_DEFAULT_PREFIX"}"
 GAUDI_MULTIPLEXER_SUFFIX="${GAUDI_MULTIPLEXER_SUFFIX="$GAUDI_PROMPT_DEFAULT_SUFFIX"}"
-GAUDI_MULTIPLEXER_SYMBOL="✜"
+GAUDI_MULTIPLEXER_SYMBOL="${GAUDI_MULTIPLEXER_SYMBOL="✜"}"
 GAUDI_MULTIPLEXER_COLOR="${GAUDI_MULTIPLEXER_COLOR=""}"
 
 # ------------------------------------------------------------------------------
 # Section
 # ------------------------------------------------------------------------------
 
-# Show current Maven version
+# Show the number of detached tmux and screen sessions
 gaudi_multiplexer () {
   [[ $GAUDI_MULTIPLEXER_SHOW == false ]] && return
 
-  # Check if tmux or scren are installed
+  # Check if tmux or screen are installed
   ! gaudi::exists tmux && ! gaudi::exists screen && return
 
-  local multiplexers
+  local multiplexers="" detached_tmux_sessions="" detached_screen_sessions=""
 
   detached_tmux_sessions=$(tmux list-sessions 2> /dev/null | \grep -cv 'attached')
   detached_screen_sessions=$(screen -ls 2> /dev/null | \grep -c '[Dd]etach[^)]*)$')

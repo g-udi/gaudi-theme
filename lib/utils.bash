@@ -85,22 +85,6 @@ gaudi::render_segment () {
   [[ -n $info ]] && printf "%s" "$info"
 }
 
-# Render a prompt section by getting the segments from the segments definitions array
-# USAGE:
-#   gaudi::render_prompt segments <array>
-gaudi::render_prompt () {
-  local _prompt=""
-  declare -a _segments=("${!1}")
-  if [[ -n "${_segments}" ]]; then
-    for segment in "${_segments[@]}"; do
-      local info
-      info="$(gaudi::render_segment "$segment")"
-      [[ -n "${info}" ]] && _prompt+="$info"
-    done
-    printf "%s" "$_prompt"
-  fi;
-}
-
 # How long (seconds) the output of a synchronous segment may be reused. Only
 # segments that shell out to slow system tools and change rarely are cached;
 # everything else is rendered on every prompt (TTL 0). The result is left in
@@ -123,7 +107,7 @@ gaudi::set_now () {
   fi
 }
 
-# Same as gaudi::render_prompt, but runs in the current shell and leaves the
+# Render the segments named in an array, in the current shell, and leave the
 # result in GAUDI_THEME_REPLY: segment files are sourced once per session and
 # each segment costs a single subshell, or none at all when the segment also
 # defines `gaudi::segment_<name>` (a function that leaves its output in

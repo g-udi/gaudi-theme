@@ -43,14 +43,13 @@ The prompt character (`>>`) appears on the line below. It is drawn from the exit
 
 ### Global Variables
 
-All global variables use Bash default-value assignment (`${VAR=default}`), so any value you export **before** the theme loads takes precedence.
+All global variables, the three prompt arrays and every setting of a segment use Bash default-value assignment (`${VAR=default}`), so any value you set **before** the theme loads takes precedence.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `GAUDI_SPLIT_PROMPT` | `true` | When `true`, right-prompt segments are right-aligned on the first line. When `false`, all segments render inline from left to right. |
 | `GAUDI_SPLIT_PROMPT_TWO_LINES` | `false` | When `true` (and split prompt is enabled), a newline separates the right and left sections instead of a carriage return on the same line. |
 | `GAUDI_ENABLE_SYMBOLS` | `true` | When `true`, Nerd Font glyphs are used for segment icons. When `false`, the segment name is displayed as a plain-text fallback. |
-| `GAUDI_ENABLE_HUSHLOGIN` | `true` | Controls whether the login banner is suppressed. |
 | `GAUDI_PROMPT_DEFAULT_PREFIX` | `" "` (space) | Default string prepended to every segment's content. Individual segments can override this. |
 | `GAUDI_PROMPT_DEFAULT_SUFFIX` | `" "` (space) | Default string appended to every segment's content. Individual segments can override this. |
 
@@ -85,13 +84,13 @@ Per-shell state lives in `${XDG_CACHE_HOME:-$HOME/.cache}/gaudi-bash/theme/gaudi
 | `cwd` | Current working directory, with `$HOME` shown as `~` and long paths shortened (see [Working directory](#working-directory)). Uses a different colour when the directory is not writable. Optionally displays file count and total size. |
 | `duration` | Execution time of the last command. Only appears when the command exceeded a configurable threshold (default: 1 second). |
 | `host` | Hostname. Highlights differently when connected via SSH. |
-| `jobs` | Number of background jobs. Only appears when the count meets a configurable threshold. |
+| `jobs` | An icon while jobs run in the background. Their number is added once there are more of them than `GAUDI_JOBS_AMOUNT_THRESHOLD` (default: 1). |
 | `multiplexer` | Detached tmux and GNU Screen session counts. |
 | `shlvl` | Current shell nesting level (`SHLVL`). Useful for detecting nested shells spawned from editors or nix-shell. Only shown when depth exceeds a threshold (default: 2). |
 | `system` | System statistics: CPU load, memory usage, and disk usage. |
 | `time` | Current time in a configurable format (default: `HH:MM`). |
 | `user` | Username. Visibility can be set to `always`, `true` (show if needed or on SSH), `needed`, or `false`. Root users are highlighted in red. |
-| `battery` | Battery level and charging status with threshold-based visibility. |
+| `battery` | Battery level and charging status; red below `GAUDI_BATTERY_THRESHOLD` percent. `GAUDI_BATTERY_SHOW` is `always` (default), `true` (only below the threshold or when fully charged) or `false`. Nothing is shown on a machine without a battery. |
 | `vpn` | Indicates when the connection is routed through a VPN. |
 
 ### Version Control
@@ -164,7 +163,8 @@ Every segment follows a consistent configuration pattern using environment varia
 Some segments expose additional variables. For example:
 
 - `GAUDI_NODE_DEFAULT_VERSION` -- Hide the segment when the active version matches this value.
-- `GAUDI_BATTERY_THRESHOLD` -- Only show battery when the charge is below this percentage.
+- `GAUDI_BATTERY_THRESHOLD` -- Charge (percent, default `10`) below which the battery turns red. With `GAUDI_BATTERY_SHOW=true` the battery is only shown below this percentage or when fully charged.
+- `GAUDI_JOBS_AMOUNT_THRESHOLD` -- Number of background jobs above which the count is shown next to the icon (default `1`); `GAUDI_JOBS_AMOUNT_PREFIX` and `GAUDI_JOBS_AMOUNT_SUFFIX` go around the count.
 - `GAUDI_DURATION_MIN_SECONDS` -- Minimum command duration (in seconds) before the segment appears.
 - `GAUDI_SCM_FETCH` -- Whether to run `git fetch` automatically.
 - `GAUDI_RUST_SHOW_TOOLCHAIN` -- Display the active Rust toolchain alongside the version.
@@ -215,7 +215,7 @@ The continuation prompt used to share the `GAUDI_CHAR_PREFIX`, `GAUDI_CHAR_SUFFI
 
 ## Customizing the Prompt
 
-Override the prompt arrays in your `~/.bash_profile` (or `~/.bashrc`) **before** the theme is sourced. For example, to show only the working directory and Git status on the left, move time to the right, and limit async segments:
+Override the prompt arrays in your `~/.bash_profile` (or `~/.bashrc`) **before** the theme is sourced: an array that already exists is kept, an empty one (`GAUDI_PROMPT_RIGHT=()`) included. They are read on every prompt, so changing them later in a running shell works too. For example, to show only the working directory and Git status on the left, move time to the right, and limit async segments:
 
 ```bash
 # ~/.bash_profile

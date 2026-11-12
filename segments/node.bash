@@ -21,9 +21,13 @@ GAUDI_NODE_COLOR="${GAUDI_NODE_COLOR="$GAUDI_YELLOW"}"
 # ------------------------------------------------------------------------------
 
 # Show current version of node, exception system.
+#
+# A version manager that is loaded on first use (the nvm plugin) leaves stub
+# functions named nvm and node behind until then. They are never called from
+# here: calling one would load nvm inside the prompt. nvm is only asked once
+# the real one is loaded (it defines nvm_ls_current), and node only when it is
+# a program on PATH.
 gaudi_node () {
-
-  shopt -s nullglob
 
   [[ $GAUDI_NODE_SHOW == false ]] && return
 
@@ -32,17 +36,19 @@ gaudi_node () {
 
   local 'node_version'
 
-  if gaudi::exists nvm; then
+  if gaudi::defined nvm_ls_current; then
     node_version=$(nvm current 2>/dev/null)
-    [[ $node_version == "system" || $node_version == "node" ]] && return
-  elif gaudi::exists nodenv; then
+    [[ $node_version == "system" || $node_version == "node" || $node_version == "none" ]] && return
+  elif type -P nodenv > /dev/null 2>&1; then
     node_version=$(nodenv version-name)
     [[ $node_version == "system" || $node_version == "node" ]] && return
-  elif gaudi::exists node; then
-    node_version=$(node -v 2>/dev/null)
+  elif type -P node > /dev/null 2>&1; then
+    node_version=$(command node -v 2>/dev/null)
   else
     return
   fi
+
+  [[ -n $node_version ]] || return
 
   [[ $node_version == "$GAUDI_NODE_DEFAULT_VERSION" ]] && return
 
