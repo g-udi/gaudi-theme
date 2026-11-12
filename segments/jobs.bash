@@ -20,7 +20,9 @@ GAUDI_JOBS_AMOUNT_THRESHOLD="${GAUDI_JOBS_AMOUNT_THRESHOLD=1}"
 # Section
 # ------------------------------------------------------------------------------
 
-# Show icon if there's a working jobs in the background
+# Show an icon when jobs are running in the background. Their number is added,
+# between GAUDI_JOBS_AMOUNT_PREFIX and GAUDI_JOBS_AMOUNT_SUFFIX, once there are
+# more of them than GAUDI_JOBS_AMOUNT_THRESHOLD.
 gaudi_jobs () {
   [[ $GAUDI_JOBS_SHOW == false ]] && return
 
@@ -31,8 +33,8 @@ gaudi_jobs () {
 
   if [[ $jobs_amount -le $GAUDI_JOBS_AMOUNT_THRESHOLD ]]; then
     jobs_amount=''
-    GAUDI_JOBS_AMOUNT_PREFIX=''
-    GAUDI_JOBS_AMOUNT_SUFFIX=''
+  else
+    jobs_amount="${GAUDI_JOBS_AMOUNT_PREFIX}${jobs_amount}${GAUDI_JOBS_AMOUNT_SUFFIX}"
   fi
 
   gaudi::section \

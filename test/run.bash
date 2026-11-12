@@ -473,11 +473,148 @@ test_has_files () {
   gaudi::has_files '*.js' || fail "*.js not found with nullglob set"
   shopt -u nullglob
 
-  # A segment that relies on it.
+  # A segment that relies on it (a loaded nvm defines nvm_ls_current).
   nvm () { echo "v99.0.0"; }
+  nvm_ls_current () { :; }
   assert_contains "$(gaudi::render_segment node)" "v99.0.0" "node segment in a directory with .js files"
   rm -f 'with space.js'
   assert_equal "$(gaudi::render_segment node)" "" "node segment in a directory without .js files"
+}
+
+# ------------------------------------------------------------------------------
+# Configuration set before the theme loads
+# ------------------------------------------------------------------------------
+
+test_preset_configuration_is_kept () {
+  local out=""
+
+  out="$(in_new_shell 'GAUDI_PROMPT_LEFT=(cwd); GAUDI_PROMPT_RIGHT=(); GAUDI_PROMPT_DEFAULT_PREFIX="<"' \
+    'printf "%s|%s|%s|%s|%s" "${GAUDI_PROMPT_LEFT[*]}" "${#GAUDI_PROMPT_RIGHT[@]}" "${#GAUDI_PROMPT_ASYNC[@]}" "$GAUDI_PROMPT_DEFAULT_PREFIX" "$GAUDI_PROMPT_DEFAULT_SUFFIX"')"
+  assert_equal "$out" "cwd|0|17|<| " "arrays and defaults set before the theme loads are kept, the rest gets its default"
+
+  out="$(in_new_shell '' 'printf "%s|%s|%s" "${GAUDI_PROMPT_LEFT[*]}" "${GAUDI_PROMPT_RIGHT[*]}" "${GAUDI_PROMPT_ASYNC[0]}"')"
+  assert_equal "$out" "multiplexer duration cwd|battery time user host|scm" "defaults when nothing is set"
+
+  # Every setting of a segment is a default too.
+  out="$(in_new_shell 'GAUDI_TIME_SYMBOL=T; GAUDI_DURATION_SYMBOL=D; GAUDI_MULTIPLEXER_SYMBOL=M; GAUDI_VPN_SYMBOL=V; GAUDI_SYSTEM_CPU_SYMBOL=C; GAUDI_DOCKERCOMPOSE_SYMBOL_UP=U; GAUDI_THEME_PROMPT_CLEAN_COLOR=K' \
+    'for s in time duration multiplexer vpn system dockercompose scm; do gaudi::load_segment "$s"; done; printf "%s" "$GAUDI_TIME_SYMBOL$GAUDI_DURATION_SYMBOL$GAUDI_MULTIPLEXER_SYMBOL$GAUDI_VPN_SYMBOL$GAUDI_SYSTEM_CPU_SYMBOL$GAUDI_DOCKERCOMPOSE_SYMBOL_UP$GAUDI_THEME_PROMPT_CLEAN_COLOR"')"
+  assert_equal "$out" "TDMVCUK" "segment symbols and colours set before the theme loads are kept"
+}
+
+# ------------------------------------------------------------------------------
+# Node segment and lazy-loaded version managers
+# ------------------------------------------------------------------------------
+
+test_node_never_calls_lazy_stubs () {
+  local dir="$TEST_TMP/work/node" bin="$TEST_TMP/nodebin"
+
+  load_theme
+  mkdir -p "$dir" "$bin" && cd "$dir" || fail "cannot create $dir"
+  : > package.json
+
+  # What a lazy-loading plugin leaves behind: functions that would load nvm.
+  nvm () { : > "$TEST_TMP/STUB_CALLED"; echo "v1.0.0"; }
+  node () { : > "$TEST_TMP/STUB_CALLED"; echo "v1.0.0"; }
+
+  printf '#!/bin/sh\necho v20.1.0\n' > "$bin/node"
+  chmod +x "$bin/node"
+
+  # No node program on PATH: nothing is shown and no stub is called.
+  PATH="/nonexistent"
+  hash -r
+  assert_equal "$(gaudi::render_segment node)" "" "no node program on PATH"
+  [[ ! -e "$TEST_TMP/STUB_CALLED" ]] || fail "a lazy-load stub was called"
+
+  # A node program on PATH is asked directly, not through the stub.
+  PATH="$bin"
+  hash -r
+  assert_contains "$(gaudi::render_segment node)" "v20.1.0" "the node program on PATH"
+  [[ ! -e "$TEST_TMP/STUB_CALLED" ]] || fail "a lazy-load stub was called"
+}
+
+# ------------------------------------------------------------------------------
+# Battery
+# ------------------------------------------------------------------------------
+
+# Stand-ins for uname and pmset, so the same test runs on Linux and macOS:
+# pmset prints the content of $TEST_TMP/pmset.out.
+battery_text () {
+  strip_ansi "$(gaudi_battery)"
+}
+
+test_battery_segment () {
+  local bin="$TEST_TMP/battbin" out=""
+
+  load_theme
+  gaudi::load_segment battery
+  mkdir -p "$bin"
+  printf '#!/bin/sh\necho Darwin\n' > "$bin/uname"
+  printf '#!/bin/sh\ncat "%s"\n' "$TEST_TMP/pmset.out" > "$bin/pmset"
+  chmod +x "$bin/uname" "$bin/pmset"
+  PATH="$bin:$PATH"
+  GAUDI_ENABLE_SYMBOLS=false
+
+  assert_equal "$GAUDI_BATTERY_SHOW" "always" "the battery is always shown by default"
+
+  # A machine without a battery shows nothing at all.
+  printf "Now drawing from 'AC Power'\n" > "$TEST_TMP/pmset.out"
+  assert_equal "$(gaudi_battery)" "" "no battery, no segment"
+
+  printf "Now drawing from 'Battery Power'\n -InternalBattery-0 (id=1)\t85%%; discharging; 3:10 remaining present: true\n" > "$TEST_TMP/pmset.out"
+  out="$(gaudi_battery)"
+  assert_contains "$out" "85%"
+  assert_contains "$out" "$GAUDI_YELLOW" "yellow above the threshold"
+  GAUDI_BATTERY_SHOW=true
+  assert_equal "$(gaudi_battery)" "" "true: hidden above the threshold"
+  GAUDI_BATTERY_THRESHOLD=90
+  assert_contains "$(gaudi_battery)" "85%" "true: shown below the threshold"
+  GAUDI_BATTERY_THRESHOLD=10
+
+  printf "Now drawing from 'Battery Power'\n -InternalBattery-0 (id=1)\t5%%; discharging; 0:10 remaining present: true\n" > "$TEST_TMP/pmset.out"
+  out="$(gaudi_battery)"
+  assert_contains "$out" "5%" "true: shown below the threshold"
+  assert_contains "$out" "$GAUDI_RED" "red below the threshold"
+
+  printf "Now drawing from 'AC Power'\n -InternalBattery-0 (id=1)\t100%%; charged; 0:00 remaining present: true\n" > "$TEST_TMP/pmset.out"
+  out="$(gaudi_battery)"
+  assert_contains "$out" "100%" "true: shown when fully charged"
+  assert_contains "$out" "$GAUDI_GREEN" "green when fully charged"
+
+  GAUDI_BATTERY_SHOW=false
+  assert_equal "$(gaudi_battery)" ""
+
+  out="$(battstat '{x}' 2>&1)" && fail "an unknown token was accepted"
+  assert_contains "$out" "unknown argument"
+}
+
+# ------------------------------------------------------------------------------
+# Jobs
+# ------------------------------------------------------------------------------
+
+test_jobs_segment () {
+  local out=""
+
+  load_theme
+  gaudi::load_segment jobs
+  GAUDI_ENABLE_SYMBOLS=false
+  GAUDI_SYMBOL_ALT="jobs"
+  GAUDI_JOBS_AMOUNT_PREFIX="["
+  GAUDI_JOBS_AMOUNT_SUFFIX="]"
+
+  assert_equal "$(gaudi_jobs)" "" "no jobs, no segment"
+
+  sleep 30 &
+  out="$(strip_ansi "$(gaudi_jobs)")"
+  assert_equal "$out" " jobs  " "one job: the icon alone (the threshold is 1)"
+
+  sleep 30 &
+  out="$(strip_ansi "$(gaudi_jobs)")"
+  assert_equal "$out" " jobs [2] " "more jobs than the threshold: the count, with its prefix and suffix"
+  assert_equal "$GAUDI_JOBS_AMOUNT_PREFIX" "[" "the settings are left as they were"
+
+  kill %1 %2 2> /dev/null
+  wait 2> /dev/null
+  return 0
 }
 
 # ------------------------------------------------------------------------------
@@ -571,6 +708,10 @@ run_test "cwd: segment output and options" test_cwd_segment
 run_test "aws: profile selection" test_aws_segment
 run_test "aws: rendered from the environment of each shell, never cached" test_aws_is_rendered_from_the_environment
 run_test "has_files: glob matching without find" test_has_files
+run_test "config: values set before the theme loads are kept" test_preset_configuration_is_kept
+run_test "node: lazy-load stubs of version managers are never called" test_node_never_calls_lazy_stubs
+run_test "battery: no battery, threshold colour and visibility" test_battery_segment
+run_test "jobs: icon, and the count above the threshold" test_jobs_segment
 run_test "async: cached content is shown, then refreshed" test_cached_async_content_is_shown
 run_test "async: a new prompt cancels the previous worker" test_previous_worker_is_cancelled
 run_test "async: per-shell state is removed on exit" test_shell_state_is_removed_on_exit
